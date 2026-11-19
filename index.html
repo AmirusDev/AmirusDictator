@@ -237,6 +237,7 @@ body.mini>header,body.mini>main,body.mini>footer,body.mini>#toast{display:none}
     <div id="winGroup" hidden>
       <h3>Type into other Windows apps</h3>
       <label class="row"><span><b>Type into other apps</b><small id="helperStatus">Off</small></span><input class="sw" type="checkbox" data-key="typeOut"></label>
+      <label class="row"><span><b>Type words as you speak</b><small>Off: each phrase is typed when you pause, which is slower but lets Chrome correct words first</small></span><input class="sw" type="checkbox" data-key="liveType"></label>
       <span class="note"><a href="AmirusDictatorHelper.exe" download>Download the helper</a> and run it once. After that you do not need this page: click into any app and press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>D</kbd>. A small mic window appears in the corner and types what you say; press it again to stop. The switch above is only for dictating from this page instead.</span>
     </div>
     <div id="androidGroup" hidden>
@@ -285,7 +286,7 @@ const els = {text:$('text'), interim:$('interim'), status:$('status'), count:$('
 /* ---------- settings ---------- */
 const DEF = {lang:'bn', bnLocale:'bn-BD', enLocale:'en-US', autocorrect:true, capitalize:true, dari:true,
   commands:true, autoEnd:false, digits:'keep', keepListening:true, autoCopy:false, wake:true,
-  theme:'system', fontSize:20, replacements:'', typeOut:false};
+  theme:'system', fontSize:20, replacements:'', typeOut:false, liveType:true};
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
@@ -336,6 +337,7 @@ els.settings.addEventListener('click', e => { if (e.target === els.settings) els
 /* ---------- text processing ---------- */
 const EDGE_L = '(?<![\\p{L}\\p{M}\\p{N}])', EDGE_R = '(?![\\p{L}\\p{M}\\p{N}])';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const CMD_FIRST = new Set();   // first words of two-word commands; live typing never cuts a phrase right after one
 const COMMANDS = [
   ['\n\n', ['নতুন প্যারাগ্রাফ', 'নতুন অনুচ্ছেদ', 'new paragraph']],
   ['\n',   ['নতুন লাইন', 'পরের লাইন', 'new line']],
@@ -347,6 +349,7 @@ const COMMANDS = [
   ['.',    ['full stop']],
   [',',    ['কমা', 'comma']],
 ].map(([out, words]) => {
+  words.forEach(w => { const parts = w.normalize('NFC').split(' '); if (parts.length > 1) CMD_FIRST.add(parts[0].toLowerCase()); });
   const alts = words.map(w => esc(w.normalize('NFC')).replace(/ /g, '\\s+')).join('|');
   const tail = out.startsWith('\n') ? '[ \\t]*' : '';
   return [new RegExp('[ \\t]*' + EDGE_L + '(?:' + alts + ')' + EDGE_R + tail, 'giu'), out];
@@ -376,7 +379,7 @@ function tidy(t, bn){
 }
 const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
 // Mirrored in android/src/dev/amirus/dictator/TextFix.java: keep the two in step.
-function processPhrase(raw, before){
+function processPhrase(raw, before, partial){
   const bn = S.lang === 'bn';
   let t = raw.normalize('NFC').trim();
   if (!t) return '';
@@ -385,7 +388,7 @@ function processPhrase(raw, before){
   if (S.autocorrect) t = tidy(t, bn);
   if (S.digits === 'bn' && bn) t = t.replace(/\d/g, d => BN_DIGITS[d]);
   else if (S.digits === 'en') t = t.replace(/[০-৯]/g, d => BN_DIGITS.indexOf(d));
-  if (S.autoEnd && /[^\s.?!।,;:]$/.test(t)) t += bn ? '।' : '.';
+  if (S.autoEnd && !partial && /[^\s.?!।,;:]$/.test(t)) t += bn ? '।' : '.';
   if (S.autocorrect && S.capitalize) {
     const ctx = before.replace(/[ \t]+$/, '');
     if (ctx === '' || /[.?!।\n]$/.test(ctx)) t = t.replace(/^(\s*)([a-z])/, (m, s, c) => s + c.toUpperCase());
@@ -490,10 +493,10 @@ function spawn(){
   const me = rec;
   rec.onresult = e => {
     let live = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const r = e.results[i];
-      if (r.isFinal) insertFinal(r[0].transcript); else live += r[0].transcript;
-    }
+    for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) insertFinal(e.results[i][0].transcript);
+    // Everything not final yet, including parts Chrome reported in earlier events.
+    for (let i = 0; i < e.results.length; i++) if (!e.results[i].isFinal) live += e.results[i][0].transcript;
+    typeLive(live);
     if (live !== pending) { pending = live; pendingSince = Date.now(); }
     speechSince = 0; netErrors = 0;
     showInterim(live);
@@ -509,7 +512,7 @@ function spawn(){
   };
   rec.onend = () => {
     if (me !== rec) return;
-    pending = ''; speechSince = 0; kickedAt = 0;
+    pending = ''; speechSince = 0; kickedAt = 0; resetLive();
     showInterim('');
     if (want && (S.keepListening || forceRestart)) {
       forceRestart = false;
@@ -525,7 +528,7 @@ function spawn(){
 }
 function start(){
   if (!SR) return notice('This browser has no speech recognition. Open this page in Google Chrome (Windows or Android) or Microsoft Edge.');
-  notice(''); want = true; quickEnds = 0; netErrors = 0; extCtx = ''; spawn();
+  notice(''); want = true; quickEnds = 0; netErrors = 0; extCtx = ''; resetLive(); spawn();
 }
 function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
 // Chrome's recognizer sometimes goes quiet: words stay "pending" and never become final, or it hears speech and
@@ -608,14 +611,55 @@ function helperConnect(){
   es.onerror = () => { es.close(); es = null; helperUp = false; helperStatus(); helperTimer = setTimeout(helperConnect, 5000); };
   helperStatus();
 }
-// While another app has focus, each finished phrase is typed there by the helper (and still logged here).
-function typeOutside(raw){
-  if (!helperUp) return;
-  if (!MINI && (document.hasFocus() || (pip && pip.document.hasFocus()))) return;
-  const out = processPhrase(raw, extCtx);
+const canTypeOut = () => helperUp && (MINI || !(document.hasFocus() || (pip && pip.document.hasFocus())));
+function sendOut(out){
   if (!out) return;
   extCtx = (extCtx + out).slice(-200);
   sendChain = sendChain.then(() => helperPost('/type', out)).catch(() => toast('Could not reach the Windows helper'));
+}
+/* Live typing: words are typed while you are still speaking, once Chrome has reported them unchanged three
+   times in a row and they are not among the last two words (those still change the most). Nothing typed is
+   ever deleted again, so a word Chrome revises later stays as first typed. */
+let snaps = [], liveTyped = [];
+const wordsOf = t => t.trim() ? t.trim().split(/\s+/) : [];
+const norm = w => (w || '').toLowerCase().replace(/[.,?!।;:]/g, '');
+function resetLive(){ snaps = []; liveTyped = []; }
+function typeLive(live){
+  if (!S.liveType || !canTypeOut()) return;
+  const words = wordsOf(live);
+  snaps.push(words);
+  if (snaps.length > 3) snaps.shift();
+  if (snaps.length < 3) return;
+  let n = liveTyped.length;
+  while (n < words.length - 2 && norm(snaps[0][n]) === norm(words[n]) && norm(snaps[1][n]) === norm(words[n])) n++;
+  while (n > liveTyped.length && CMD_FIRST.has(norm(words[n - 1]))) n--;
+  if (n <= liveTyped.length) return;
+  const chunk = words.slice(liveTyped.length, n);
+  liveTyped = liveTyped.concat(chunk);
+  sendOut(processPhrase(chunk.join(' '), extCtx, true));
+}
+// Where the not-yet-typed part of a finished phrase starts. The final wording can differ slightly from what was
+// typed live, so look for the last typed word near its expected place before falling back to counting.
+function seam(fwords){
+  const n = liveTyped.length;
+  if (!n) return 0;
+  if (n >= fwords.length) return fwords.length;
+  const last = norm(liveTyped[n - 1]);
+  for (const d of [0, -1, 1, -2, 2]) {
+    const j = n - 1 + d;
+    if (j >= 0 && j < fwords.length && norm(fwords[j]) === last) return j + 1;
+  }
+  return n;
+}
+// While another app has focus, each finished phrase is typed there by the helper (and still logged here).
+function typeOutside(raw){
+  if (!canTypeOut()) return resetLive();
+  const fwords = wordsOf(raw), rest = fwords.slice(seam(fwords)).join(' ');
+  if (rest) sendOut(processPhrase(rest, extCtx));
+  else if (liveTyped.length && S.autoEnd && !/[.?!।]\s*$/.test(extCtx)) sendOut(S.lang === 'bn' ? '।' : '.');
+  // Words typed past the end of this phrase already belong to the next one.
+  liveTyped = liveTyped.slice(fwords.length);
+  snaps = [];
 }
 
 /* ---------- boot ---------- */
