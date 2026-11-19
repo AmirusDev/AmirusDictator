@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Amirus Dictator</title>
+<meta name="description" content="Free Bengali + English voice typing.">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f5f3ee;--surface:#ffffff;--ink:#1d1c1a;--muted:#6d6b65;--line:#e2dfd6;
+  --soft:#ebe8df;--accent:#0f766e;--accent-ink:#ffffff;--rec:#d92d20;--shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06);
+}
+html[data-theme=dark]{
+  --bg:#111413;--surface:#1a1e1c;--ink:#eceae4;--muted:#9a9890;--line:#2b302d;
+  --soft:#242927;--accent:#2dd4bf;--accent-ink:#06211d;--rec:#f97066;--shadow:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Segoe UI","Nirmala UI","Noto Sans Bengali","Noto Sans",system-ui,sans-serif;
+  display:flex;flex-direction:column;height:100dvh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-tap-highlight-color:transparent;
+}
+.wrap{width:100%;max-width:780px;margin:0 auto;padding:0 16px}
+header .wrap{display:flex;align-items:center;gap:12px;padding-top:12px;padding-bottom:10px}
+.brand{font-weight:650;letter-spacing:-.01em;font-size:18px;margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{display:flex;background:var(--soft);border-radius:999px;padding:3px}
+.seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer}
+.seg button[aria-checked=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.icon{border:0;background:none;color:var(--muted);width:40px;height:40px;border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:none}
+.icon:hover{background:var(--soft);color:var(--ink)}
+#notice{background:#fff4e5;color:#7a4100;border:1px solid #f5d6a8;border-radius:12px;padding:10px 14px;font-size:15px;margin-bottom:10px}
+html[data-theme=dark] #notice{background:#33260f;color:#ffd699;border-color:#5c4416}
+main{flex:1;min-height:0;display:flex}
+main .wrap{display:flex;flex-direction:column}
+.sheet{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+#text{flex:1;min-height:0;width:100%;border:0;outline:0;resize:none;background:none;color:var(--ink);font:inherit;font-size:var(--fs,20px);line-height:1.65;padding:18px 20px}
+#text::placeholder{color:var(--muted);opacity:.75}
+#interim{min-height:0;padding:0 20px;color:var(--accent);font-size:calc(var(--fs,20px) * .9);line-height:1.5;font-style:italic}
+#interim:not(:empty){padding:8px 20px 14px;border-top:1px dashed var(--line)}
+.status{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--muted);padding:8px 4px 0}
+#status.live{color:var(--rec);font-weight:600}
+.dock{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 0 14px}
+.dock .side{display:flex;gap:6px;flex:1}
+.dock .side:last-child{justify-content:flex-end}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:15px;font-weight:600;padding:10px 14px;border-radius:12px;cursor:pointer;min-height:44px}
+.btn:hover{background:var(--soft)}
+.btn:disabled{opacity:.45;cursor:default}
+.mic{position:relative;flex:none;width:72px;height:72px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(15,118,110,.35);transition:transform .12s,background .2s}
+.mic:active{transform:scale(.95)}
+.mic[aria-pressed=true]{background:var(--rec);color:#fff;box-shadow:0 6px 18px rgba(217,45,32,.4)}
+.mic[aria-pressed=true]::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--rec);opacity:.5;animation:pulse 1.4s ease-out infinite}
+@keyframes pulse{from{transform:scale(.92);opacity:.6}to{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.mic[aria-pressed=true]::after{animation:none}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap}
+#toast.show{opacity:1}
+dialog{border:0;padding:0;background:var(--surface);color:var(--ink);border-radius:20px;width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dhead{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 8px;position:sticky;top:0;background:var(--surface);z-index:1}
+.dhead h2{margin:0;font-size:18px}
+.dbody{padding:0 20px 20px}
+.group{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 0 4px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--line)}
+.row b{font-weight:600;font-size:15px;display:block}
+.row small{color:var(--muted);font-size:13px;display:block;margin-top:2px}
+.row.sub{padding-left:14px}
+select,.rep{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.rep{width:100%;min-height:96px;resize:vertical;margin-top:8px;line-height:1.5}
+input[type=range]{accent-color:var(--accent);width:140px}
+.sw{appearance:none;flex:none;width:46px;height:28px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .15s;margin:0}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.sw:checked{background:var(--accent)}
+.sw:checked::after{transform:translateX(18px)}
+.sw:disabled{opacity:.4}
+details{margin-top:14px;font-size:15px}
+summary{cursor:pointer;font-weight:600;padding:6px 0}
+table{border-collapse:collapse;width:100%;margin-top:6px}
+td{padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+td:last-child{text-align:right;font-weight:700;white-space:nowrap}
+kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+@media (max-width:480px){
+  .brand{font-size:16px}.seg button{padding:7px 12px}
+  .btn{padding:10px 11px;font-size:13px}
+  #text{padding:14px 16px}
+}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand">Amirus Dictator</div>
+  <div class="seg" role="radiogroup" aria-label="Dictation language">
+    <button type="button" role="radio" data-lang="bn" lang="bn">বাংলা</button>
+    <button type="button" role="radio" data-lang="en">English</button>
+  </div>
+  <button class="icon" id="openSettings" aria-label="Settings" title="Settings">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+</div></header>
+
+<main><div class="wrap">
+  <div id="notice" hidden></div>
+  <div class="sheet">
+    <textarea id="text" spellcheck="false" aria-label="Dictated text" placeholder="মাইক চাপুন এবং বলা শুরু করুন…&#10;Tap the mic and start speaking…"></textarea>
+    <div id="interim" aria-live="off"></div>
+  </div>
+</div></main>
+
+<footer><div class="wrap">
+  <div class="status"><span id="status" role="status">Ready</span><span id="count">0 words</span></div>
+  <div class="dock">
+    <div class="side">
+      <button class="btn" id="undo" type="button" disabled>Undo</button>
+      <button class="btn" id="clear" type="button">Clear</button>
+    </div>
+    <button class="mic" id="mic" type="button" aria-pressed="false" aria-label="Start dictation" title="Start / stop (Ctrl+Space)">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></svg>
+    </button>
+    <div class="side">
+      <button class="btn" id="copy" type="button">Copy</button>
+      <button class="btn" id="share" type="button">Save</button>
+    </div>
+  </div>
+</div></footer>
+
+<div id="toast" role="status"></div>
+
+<dialog id="settings" aria-labelledby="st">
+  <div class="dhead"><h2 id="st">Settings</h2>
+    <button class="icon" id="closeSettings" aria-label="Close settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="dbody">
+    <div class="group">Text clean-up</div>
+    <label class="row"><span><b>Auto-correct</b><small>Fix spacing and punctuation as you speak</small></span><input class="sw" type="checkbox" data-key="autocorrect"></label>
+    <label class="row sub"><span><b>Capitalize English</b><small>Sentence starts and the word “I”</small></span><input class="sw" type="checkbox" data-key="capitalize" data-needs="autocorrect"></label>
+    <label class="row sub"><span><b>Use দাঁড়ি (।) in Bengali</b><small>Turn a sentence-ending “.” into “।”</small></span><input class="sw" type="checkbox" data-key="dari" data-needs="autocorrect"></label>
+    <label class="row"><span><b>Spoken punctuation</b><small>Say “দাঁড়ি”, “কমা”, “নতুন লাইন”, “comma”…</small></span><input class="sw" type="checkbox" data-key="commands"></label>
+    <label class="row"><span><b>End each pause with । or .</b><small>Adds a sentence end whenever you stop speaking</small></span><input class="sw" type="checkbox" data-key="autoEnd"></label>
+    <label class="row"><span><b>Numbers</b><small>Which digits to write</small></span>
+      <select data-key="digits"><option value="keep">As recognized</option><option value="bn">০১২ in Bengali mode</option><option value="en">Always 012</option></select></label>
+
+    <div class="group">Listening</div>
+    <label class="row"><span><b>Keep listening</b><small>Stay on through pauses until you tap stop</small></span><input class="sw" type="checkbox" data-key="keepListening"></label>
+    <label class="row"><span><b>Auto-copy</b><small>Copy the whole text after every phrase</small></span><input class="sw" type="checkbox" data-key="autoCopy"></label>
+    <label class="row"><span><b>Keep screen on</b><small>While the mic is active</small></span><input class="sw" type="checkbox" data-key="wake"></label>
+    <label class="row"><span><b>Bengali accent</b></span>
+      <select data-key="bnLocale"><option value="bn-BD">Bangladesh</option><option value="bn-IN">India</option></select></label>
+    <label class="row"><span><b>English accent</b></span>
+      <select data-key="enLocale"><option value="en-US">US</option><option value="en-GB">UK</option><option value="en-IN">India</option></select></label>
+
+    <div class="group">Appearance</div>
+    <label class="row"><span><b>Theme</b></span>
+      <select data-key="theme"><option value="system">Match device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <label class="row"><span><b>Text size</b></span><input type="range" min="15" max="32" step="1" data-key="fontSize"></label>
+
+    <div class="group">My corrections</div>
+    <small style="color:var(--muted)">One per line: <kbd>heard = wanted</kbd>. Fixes words the recognizer keeps getting wrong.</small>
+    <textarea class="rep" data-key="replacements" spellcheck="false" placeholder="আমিরুস = আমিরুছ&#10;whats app = WhatsApp"></textarea>
+
+    <details><summary>Spoken punctuation list</summary>
+      <table>
+        <tr><td lang="bn">দাঁড়ি</td><td>।</td></tr>
+        <tr><td><span lang="bn">কমা</span> · comma</td><td>,</td></tr>
+        <tr><td><span lang="bn">প্রশ্নবোধক চিহ্ন</span> · question mark</td><td>?</td></tr>
+        <tr><td><span lang="bn">বিস্ময় চিহ্ন</span> · exclamation mark</td><td>!</td></tr>
+        <tr><td>full stop</td><td>.</td></tr>
+        <tr><td><span lang="bn">কোলন · সেমিকোলন</span> · colon · semicolon</td><td>: ;</td></tr>
+        <tr><td><span lang="bn">নতুন লাইন</span> · new line</td><td>↵</td></tr>
+        <tr><td><span lang="bn">নতুন প্যারাগ্রাফ</span> · new paragraph</td><td>↵↵</td></tr>
+      </table>
+    </details>
+    <details><summary>Keyboard shortcuts</summary>
+      <table>
+        <tr><td>Start / stop mic</td><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td></tr>
+        <tr><td>Switch language</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd></td></tr>
+      </table>
+    </details>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const els = {text:$('text'), interim:$('interim'), status:$('status'), count:$('count'), mic:$('mic'),
+  notice:$('notice'), toast:$('toast'), undo:$('undo'), settings:$('settings'), share:$('share')};
+
+/* ---------- settings ---------- */
+const DEF = {lang:'bn', bnLocale:'bn-BD', enLocale:'en-US', autocorrect:true, capitalize:true, dari:true,
+  commands:true, autoEnd:false, digits:'keep', keepListening:true, autoCopy:false, wake:true,
+  theme:'system', fontSize:20, replacements:''};
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+};
+const S = Object.assign({}, DEF, store.get('ad.settings', {}));
+const saveSettings = () => store.set('ad.settings', S);
+
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+function applyLook(){
+  const dark = S.theme === 'dark' || (S.theme === 'system' && darkMq.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.style.setProperty('--fs', S.fontSize + 'px');
+}
+darkMq.addEventListener('change', applyLook);
+
+function syncSettingsUI(){
+  document.querySelectorAll('[data-key]').forEach(el => {
+    if (el.type === 'checkbox') el.checked = !!S[el.dataset.key]; else el.value = S[el.dataset.key];
+    if (el.dataset.needs) el.disabled = !S[el.dataset.needs];
+  });
+  document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-checked', b.dataset.lang === S.lang));
+  els.text.lang = S.lang;
+}
+els.settings.addEventListener('input', e => {
+  const el = e.target, k = el.dataset.key; if (!k) return;
+  S[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
+  if (k === 'replacements') repCache = null;
+  saveSettings(); applyLook(); syncSettingsUI();
+  if ((k === 'bnLocale' || k === 'enLocale' || k === 'keepListening') && want) relaunch();
+});
+$('openSettings').onclick = () => els.settings.showModal();
+$('closeSettings').onclick = () => els.settings.close();
+els.settings.addEventListener('click', e => { if (e.target === els.settings) els.settings.close(); });
+
+/* ---------- text processing ---------- */
+const EDGE_L = '(?<![\\p{L}\\p{M}\\p{N}])', EDGE_R = '(?![\\p{L}\\p{M}\\p{N}])';
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const COMMANDS = [
+  ['\n\n', ['নতুন প্যারাগ্রাফ', 'নতুন অনুচ্ছেদ', 'new paragraph']],
+  ['\n',   ['নতুন লাইন', 'পরের লাইন', 'new line']],
+  ['?',    ['প্রশ্নবোধক চিহ্ন', 'প্রশ্ন চিহ্ন', 'question mark']],
+  ['!',    ['বিস্ময়বোধক চিহ্ন', 'বিস্ময়সূচক চিহ্ন', 'বিস্ময় চিহ্ন', 'আশ্চর্যবোধক চিহ্ন', 'exclamation mark', 'exclamation point']],
+  [';',    ['সেমিকোলন', 'semicolon']],
+  [':',    ['কোলন', 'colon']],
+  ['।',    ['দাঁড়ি', 'দাড়ি']],
+  ['.',    ['full stop']],
+  [',',    ['কমা', 'comma']],
+].map(([out, words]) => {
+  const alts = words.map(w => esc(w.normalize('NFC')).replace(/ /g, '\\s+')).join('|');
+  const tail = out.startsWith('\n') ? '[ \\t]*' : '';
+  return [new RegExp('[ \\t]*' + EDGE_L + '(?:' + alts + ')' + EDGE_R + tail, 'giu'), out];
+});
+function applyCommands(t){ for (const [re, out] of COMMANDS) t = t.replace(re, out); return t; }
+
+let repCache = null;
+function replacements(){
+  if (repCache) return repCache;
+  repCache = [];
+  for (const line of String(S.replacements).split('\n')) {
+    const i = line.indexOf('='); if (i < 1) continue;
+    const from = line.slice(0, i).trim().normalize('NFC'), to = line.slice(i + 1).trim();
+    if (from) repCache.push([new RegExp(EDGE_L + esc(from).replace(/ /g, '\\s+') + EDGE_R, 'giu'), to]);
+  }
+  return repCache;
+}
+function applyReplacements(t){ for (const [re, to] of replacements()) t = t.replace(re, () => to); return t; }
+
+function tidy(t, bn){
+  t = t.replace(/[ \t]*\n[ \t]*/g, '\n').replace(/[ \t]{2,}/g, ' ');
+  t = t.replace(/[ \t]+([,.?!।;:])/g, '$1');                         // no space before punctuation
+  t = t.replace(/([,?!।;:])\1+/g, '$1');                             // no doubled punctuation
+  t = t.replace(/([,?!।;])(?=[^\s,.?!।;:\d"')\]])/g, '$1 ');         // one space after punctuation
+  if (bn && S.dari) t = t.replace(/(?<=[ঀ-৿])\.(?=\s|$)/g, '।');
+  return t.replace(/^[ \t]+|[ \t]+$/g, '');
+}
+const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
+function processPhrase(raw, before){
+  const bn = S.lang === 'bn';
+  let t = raw.normalize('NFC').trim();
+  if (!t) return '';
+  if (S.commands) t = applyCommands(t);
+  t = applyReplacements(t);
+  if (S.autocorrect) t = tidy(t, bn);
+  if (S.digits === 'bn' && bn) t = t.replace(/\d/g, d => BN_DIGITS[d]);
+  else if (S.digits === 'en') t = t.replace(/[০-৯]/g, d => BN_DIGITS.indexOf(d));
+  if (S.autoEnd && /[^\s.?!।,;:]$/.test(t)) t += bn ? '।' : '.';
+  if (S.autocorrect && S.capitalize) {
+    const ctx = before.replace(/[ \t]+$/, '');
+    if (ctx === '' || /[.?!।\n]$/.test(ctx)) t = t.replace(/^(\s*)([a-z])/, (m, s, c) => s + c.toUpperCase());
+    t = t.replace(/([.?!।]\s+|\n)([a-z])/g, (m, p, c) => p + c.toUpperCase()).replace(/\bi\b/g, 'I');
+  }
+  if (before && !/\s$/.test(before) && !/^[\s,.?!।;:)\]]/.test(t)) t = ' ' + t;
+  if (/\s$/.test(before)) t = t.replace(/^[ \t]+/, '');
+  return t;
+}
+
+/* ---------- document ---------- */
+const undoStack = [];
+function pushUndo(){ undoStack.push(els.text.value); if (undoStack.length > 60) undoStack.shift(); els.undo.disabled = false; }
+function changed(){
+  store.set('ad.text', els.text.value);
+  const v = els.text.value.trim(), w = v ? v.split(/\s+/).length : 0;
+  els.count.textContent = w + (w === 1 ? ' word' : ' words') + ' · ' + els.text.value.length + ' chars';
+}
+function insertFinal(raw){
+  const ta = els.text, a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
+  const before = ta.value.slice(0, a), after = ta.value.slice(b);
+  const chunk = processPhrase(raw, before);
+  if (!chunk) return;
+  pushUndo();
+  ta.value = before + chunk + after;
+  const pos = before.length + chunk.length;
+  ta.setSelectionRange(pos, pos);
+  if (!after.trim()) ta.scrollTop = ta.scrollHeight;
+  changed();
+  if (S.autoCopy) navigator.clipboard?.writeText(ta.value).catch(() => {});
+}
+els.text.addEventListener('input', changed);
+
+let toastTimer;
+function toast(msg){ els.toast.textContent = msg; els.toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1800); }
+function notice(msg){ els.notice.textContent = msg || ''; els.notice.hidden = !msg; }
+
+els.undo.onclick = () => {
+  if (!undoStack.length) return;
+  els.text.value = undoStack.pop(); els.undo.disabled = !undoStack.length;
+  const n = els.text.value.length; els.text.setSelectionRange(n, n); changed();
+};
+$('clear').onclick = () => { if (!els.text.value) return; pushUndo(); els.text.value = ''; changed(); toast('Cleared · tap Undo to restore'); };
+$('copy').onclick = async () => {
+  if (!els.text.value) return toast('Nothing to copy');
+  try { await navigator.clipboard.writeText(els.text.value); }
+  catch { els.text.select(); document.execCommand('copy'); }
+  toast('Copied');
+};
+const canShare = !!navigator.share && /Android|iPhone|iPad/i.test(navigator.userAgent);
+els.share.textContent = canShare ? 'Share' : 'Save';
+els.share.onclick = () => {
+  const text = els.text.value; if (!text) return toast('Nothing to ' + (canShare ? 'share' : 'save'));
+  if (canShare) return navigator.share({text}).catch(() => {});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'}));
+  a.download = 'dictation-' + new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-') + '.txt';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+/* ---------- speech recognition ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const isAndroid = /Android/i.test(navigator.userAgent);
+let rec = null, want = false, forceRestart = false, startedAt = 0, quickEnds = 0, wakeLock = null;
+const locale = () => S.lang === 'bn' ? S.bnLocale : S.enLocale;
+
+function setState(live){
+  els.mic.setAttribute('aria-pressed', live);
+  els.mic.setAttribute('aria-label', live ? 'Stop dictation' : 'Start dictation');
+  els.status.classList.toggle('live', live);
+  els.status.textContent = live ? 'Listening · ' + (S.lang === 'bn' ? 'বাংলা' : 'English') : 'Ready';
+  if (!live) els.interim.textContent = '';
+  if (live && S.wake && !wakeLock) navigator.wakeLock?.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => wakeLock = null); }).catch(() => {});
+  if (!live && wakeLock) wakeLock.release().catch(() => {});
+}
+function fail(msg){ want = false; notice(msg); setState(false); }
+function spawn(){
+  rec = new SR();
+  rec.lang = locale();
+  // Android Chrome repeats earlier words in continuous mode, so use single-shot + auto restart there.
+  rec.continuous = S.keepListening && !isAndroid;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  const me = rec;
+  rec.onresult = e => {
+    let live = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) insertFinal(r[0].transcript); else live += r[0].transcript;
+    }
+    els.interim.textContent = live;
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') fail('Microphone is blocked. Allow microphone access for this site in your browser settings, then tap the mic again.');
+    else if (e.error === 'audio-capture') fail('No microphone found. Plug one in or check your sound settings.');
+    else if (e.error === 'network') fail('Speech recognition needs an internet connection. Check your connection and try again.');
+    else if (e.error === 'language-not-supported') fail('This browser does not support ' + locale() + '. Try Google Chrome, or change the accent in Settings.');
+  };
+  rec.onend = () => {
+    if (me !== rec) return;
+    els.interim.textContent = '';
+    if (want && (S.keepListening || forceRestart)) {
+      forceRestart = false;
+      quickEnds = Date.now() - startedAt < 700 ? quickEnds + 1 : 0;
+      if (quickEnds > 5) return fail('The speech service keeps stopping. Check your internet connection and that no other app is using the microphone.');
+      setTimeout(() => { if (want) spawn(); }, 150);
+    } else { want = false; setState(false); }
+  };
+  startedAt = Date.now();
+  try { rec.start(); setState(true); } catch { /* already started */ }
+}
+function start(){
+  if (!SR) return notice('This browser has no speech recognition. Open this page in Google Chrome (Windows or Android) or Microsoft Edge.');
+  notice(''); want = true; quickEnds = 0; spawn();
+}
+function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
+function relaunch(){ forceRestart = true; try { rec.stop(); } catch {} }
+function setLang(l){
+  if (S.lang === l) return;
+  S.lang = l; saveSettings(); syncSettingsUI();
+  if (want) { relaunch(); setState(true); }
+}
+els.mic.onclick = () => want ? stop() : start();
+document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => setLang(b.dataset.lang));
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); els.mic.click(); }
+  else if (e.ctrlKey && e.shiftKey && e.code === 'KeyL') { e.preventDefault(); setLang(S.lang === 'bn' ? 'en' : 'bn'); }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && want) setState(true); });
+
+/* ---------- boot ---------- */
+applyLook(); syncSettingsUI();
+els.text.value = store.get('ad.text', '');
+els.text.setSelectionRange(els.text.value.length, els.text.value.length);
+changed();
+if (!SR) notice('This browser has no speech recognition. Open this page in Google Chrome (Windows or Android) or Microsoft Edge.');
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
