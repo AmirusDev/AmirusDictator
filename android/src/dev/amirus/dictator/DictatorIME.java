@@ -38,6 +38,9 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
     private SpeechRecognizer recognizer;
     private boolean want, bn = true, composing;
     private int emptyRounds, errorRounds;
+    // Android 13+ can keep one recognition session open across pauses, so nothing is lost between phrases.
+    // Turned off for good if the phone's speech service rejects it.
+    private boolean segmented = Build.VERSION.SDK_INT >= 33, segmentSeen;
     private TextView status, langKey, endKey;
     private MicView mic;
     private int cKey, cInk;
@@ -325,6 +328,12 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+        // Do not cut a sentence at a short breath.
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
+        if (segmented && prefs.getBoolean("keepListening", true)) {
+            i.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS);
+        }
         try {
             recognizer.startListening(i);
         } catch (RuntimeException e) {
@@ -332,6 +341,12 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
             return;
         }
         refresh();
+    }
+
+    /** Throws the recognizer away so the next listen() creates a new one. */
+    private void fresh() {
+        if (recognizer != null) recognizer.destroy();
+        recognizer = null;
     }
 
     /** Decides what happens after a phrase or a silent round. */
@@ -344,7 +359,7 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
         } else if (emptyRounds >= 4) {
             halt("Paused after silence. Tap the mic to continue.");
         } else {
-            handler.postDelayed(relisten, 120);
+            handler.postDelayed(relisten, 40);
         }
     }
 
@@ -379,6 +394,26 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
 
     @Override
     public void onResults(Bundle results) {
+        commit(results);
+        errorRounds = 0;
+        next();
+    }
+
+    /** A finished phrase inside a long session; the session itself keeps listening. */
+    @Override
+    public void onSegmentResults(Bundle segmentResults) {
+        segmentSeen = true;
+        commit(segmentResults);
+        errorRounds = 0;
+    }
+
+    @Override
+    public void onEndOfSegmentedSession() {
+        endComposing();
+        next();
+    }
+
+    private void commit(Bundle results) {
         String text = first(results);
         InputConnection ic = getCurrentInputConnection();
         if (text.trim().isEmpty() || ic == null) {
@@ -396,8 +431,6 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
             if (!out.isEmpty()) ic.commitText(out, 1);
             ic.endBatchEdit();
         }
-        errorRounds = 0;
-        next();
     }
 
     @Override
@@ -405,6 +438,14 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
         endComposing();
         if (!want) {
             refresh();
+            return;
+        }
+        boolean silence = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+        if (segmented && !segmentSeen && !silence) {
+            // This phone's speech service does not do long sessions: fall back to one phrase at a time.
+            segmented = false;
+            fresh();
+            handler.postDelayed(relisten, 150);
             return;
         }
         switch (error) {
@@ -418,8 +459,8 @@ public class DictatorIME extends InputMethodService implements RecognitionListen
                 if (++errorRounds > 5) {
                     halt("The speech service is not responding. Tap the mic to retry.");
                 } else {
-                    recognizer.cancel();
-                    handler.postDelayed(relisten, 400);
+                    fresh();   // a busy recognizer rarely recovers; a new one starts at once
+                    handler.postDelayed(relisten, 150);
                 }
                 break;
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:

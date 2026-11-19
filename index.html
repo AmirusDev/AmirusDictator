@@ -297,6 +297,7 @@ const saveSettings = () => store.set('ad.settings', S);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const isAndroid = /Android/i.test(navigator.userAgent), isWindows = /Windows/i.test(navigator.userAgent);
 let rec = null, want = false, forceRestart = false, startedAt = 0, quickEnds = 0, wakeLock = null;
+let pending = '', pendingSince = 0, speechSince = 0, kickedAt = 0;   // watchdog state, see the interval below
 const MINI = new URLSearchParams(location.search).has('mini');   // opened by the Windows helper as its mic window
 let fdoc = null;   // document holding the compact mic UI: the floating window's, or this one in mini mode
 let pip = null, es = null, helperUp = false, helperTimer = 0, extCtx = '', sendChain = Promise.resolve();
@@ -493,8 +494,12 @@ function spawn(){
       const r = e.results[i];
       if (r.isFinal) insertFinal(r[0].transcript); else live += r[0].transcript;
     }
+    if (live !== pending) { pending = live; pendingSince = Date.now(); }
+    speechSince = 0;
     showInterim(live);
   };
+  rec.onspeechstart = () => { speechSince = Date.now(); };
+  rec.onspeechend = () => { speechSince = 0; };
   rec.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') fail('Microphone is blocked. Allow microphone access for this site in your browser settings, then tap the mic again.');
     else if (e.error === 'audio-capture') fail('No microphone found. Plug one in or check your sound settings.');
@@ -503,6 +508,7 @@ function spawn(){
   };
   rec.onend = () => {
     if (me !== rec) return;
+    pending = ''; speechSince = 0; kickedAt = 0;
     showInterim('');
     if (want && (S.keepListening || forceRestart)) {
       forceRestart = false;
@@ -510,7 +516,7 @@ function spawn(){
       if (quickEnds > 5) return fail(document.hidden && !pip
         ? 'Chrome stops the mic when this page is hidden. Tap the mic here to open the small always-on-top mic window, then switch to your other app.'
         : 'The speech service keeps stopping. Check your internet connection and that no other app is using the microphone.');
-      setTimeout(() => { if (want) spawn(); }, 150);
+      setTimeout(() => { if (want) spawn(); }, 30);
     } else { want = false; setState(false); }
   };
   startedAt = Date.now();
@@ -521,6 +527,23 @@ function start(){
   notice(''); want = true; quickEnds = 0; extCtx = ''; spawn();
 }
 function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
+// Chrome's recognizer sometimes goes quiet: words stay "pending" and never become final, or it hears speech and
+// returns nothing. This notices within a few seconds, keeps the words already heard, and starts a fresh session.
+setInterval(() => {
+  if (!want || !rec) return;
+  const now = Date.now();
+  if (kickedAt) {
+    if (now - kickedAt < 2000) return;
+    kickedAt = 0;                                   // stop() was ignored: drop the session and start over
+    const lost = pending; pending = '';
+    try { rec.abort(); } catch {}
+    if (lost) insertFinal(lost);
+    spawn();
+  } else if ((pending && now - pendingSince > 2500) || (speechSince && !pending && now - speechSince > 6000)) {
+    kickedAt = now; speechSince = 0; forceRestart = true;
+    try { rec.stop(); } catch {}                    // stop() makes Chrome finalize what it has, then onend restarts
+  }
+}, 500);
 function relaunch(){ forceRestart = true; try { rec.stop(); } catch {} }
 function setLang(l, instant){
   if (S.lang === l) return;
