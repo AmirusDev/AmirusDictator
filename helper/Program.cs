@@ -1,0 +1,334 @@
+// Amirus Dictator helper: a tray app that types dictated text into whichever Windows app has focus.
+// The web app sends each finished phrase to http://127.0.0.1:48219; only the origins listed below are accepted.
+// Build (no SDK needed, uses the compiler that ships with Windows): see helper\build.cmd
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+using Microsoft.Win32;
+
+static class Program
+{
+    const int Port = 48219;
+    const string AppUrl = "https://amirusdev.github.io/AmirusDictator/";
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string RunName = "AmirusDictatorHelper";
+    const string IdleTip = "Amirus Dictator: Ctrl+Alt+D mic, Ctrl+Alt+L language";
+    // Browsers always send the page's real origin, so other websites cannot make this app type.
+    static readonly string[] Origins = { "https://amirusdev.github.io", "http://localhost:5173", "http://127.0.0.1:5173" };
+
+    static readonly List<NetworkStream> clients = new List<NetworkStream>();
+    static readonly object typeLock = new object();
+    static NotifyIcon tray;
+    static Icon idleIcon, liveIcon;
+    static Control uiThread;
+    static System.Threading.Timer keepAlive;
+
+    [STAThread]
+    static void Main()
+    {
+        bool first;
+        var mutex = new Mutex(true, "AmirusDictatorHelper.Single", out first);
+        if (!first) return;
+
+        Application.EnableVisualStyles();
+        TcpListener listener;
+        try { listener = new TcpListener(IPAddress.Loopback, Port); listener.Start(); }
+        catch (SocketException)
+        {
+            MessageBox.Show("Port " + Port + " is in use by another program, so the helper cannot start.", "Amirus Dictator helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        idleIcon = MakeIcon(Color.FromArgb(15, 118, 110));
+        liveIcon = MakeIcon(Color.FromArgb(217, 45, 32));
+        uiThread = new Control();
+        IntPtr unused = uiThread.Handle;
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Open Amirus Dictator", null, delegate { OpenApp(); });
+        var startup = new ToolStripMenuItem("Start with Windows");
+        startup.Checked = IsStartup();
+        startup.Click += delegate { SetStartup(!startup.Checked); startup.Checked = IsStartup(); };
+        menu.Items.Add(startup);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit", null, delegate { tray.Visible = false; Application.Exit(); });
+
+        tray = new NotifyIcon();
+        tray.Icon = idleIcon;
+        tray.Text = IdleTip;
+        tray.ContextMenuStrip = menu;
+        tray.Visible = true;
+        tray.DoubleClick += delegate { OpenApp(); };
+
+        var hot = new HotWindow();
+        string tip = hot.Ok
+            ? "Click into any app, then press Ctrl+Alt+D to start or stop dictating. Ctrl+Alt+L switches language."
+            : "Running, but Ctrl+Alt+D or Ctrl+Alt+L is taken by another program. Use the mic button in the Dictator window.";
+        tray.ShowBalloonTip(5000, "Amirus Dictator helper is running", tip, ToolTipIcon.Info);
+
+        var accept = new Thread(delegate ()
+        {
+            while (true)
+            {
+                try { ThreadPool.QueueUserWorkItem(Handle, listener.AcceptTcpClient()); }
+                catch { return; }
+            }
+        });
+        accept.IsBackground = true;
+        accept.Start();
+        keepAlive = new System.Threading.Timer(delegate { Broadcast(": ping\n\n"); }, null, 20000, 20000);
+
+        Application.Run();
+        tray.Visible = false;
+        listener.Stop();
+        GC.KeepAlive(mutex);
+        GC.KeepAlive(hot);
+    }
+
+    // ---------- tiny HTTP server ----------
+    static void Handle(object state)
+    {
+        var client = (TcpClient)state;
+        bool keep = false;
+        try
+        {
+            client.NoDelay = true;
+            NetworkStream s = client.GetStream();
+            s.ReadTimeout = 5000;
+
+            var head = new MemoryStream();
+            int match = 0;
+            while (match < 4 && head.Length < 16384)
+            {
+                int b = s.ReadByte();
+                if (b < 0) return;
+                head.WriteByte((byte)b);
+                match = (b == (match % 2 == 0 ? '\r' : '\n')) ? match + 1 : (b == '\r' ? 1 : 0);
+            }
+            string[] lines = Encoding.ASCII.GetString(head.ToArray()).Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length == 0) return;
+            string[] request = lines[0].Split(' ');
+            if (request.Length < 2) return;
+            string method = request[0], path = request[1], origin = null;
+            int length = 0;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                int c = lines[i].IndexOf(':');
+                if (c < 1) continue;
+                string name = lines[i].Substring(0, c).Trim().ToLowerInvariant(), value = lines[i].Substring(c + 1).Trim();
+                if (name == "origin") origin = value;
+                else if (name == "content-length") int.TryParse(value, out length);
+            }
+            if (origin == null || Array.IndexOf(Origins, origin) < 0) { Reply(s, "403 Forbidden", null); return; }
+            if (length < 0 || length > 200000) { Reply(s, "413 Payload Too Large", origin); return; }
+
+            var body = new byte[length];
+            int got = 0;
+            while (got < length)
+            {
+                int n = s.Read(body, got, length - got);
+                if (n <= 0) break;
+                got += n;
+            }
+            string text = Encoding.UTF8.GetString(body, 0, got);
+
+            if (method == "OPTIONS") Reply(s, "204 No Content", origin);
+            else if (method == "GET" && path == "/events")
+            {
+                Write(s, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n" + Cors(origin) + "\r\ndata: hello\n\n");
+                lock (clients) clients.Add(s);
+                keep = true;
+            }
+            else if (method == "POST" && path == "/type") { TypeText(text); Reply(s, "204 No Content", origin); }
+            else if (method == "POST" && path == "/state") { SetLive(text.StartsWith("on")); Reply(s, "204 No Content", origin); }
+            else Reply(s, "404 Not Found", origin);
+        }
+        catch { }
+        finally { if (!keep) client.Close(); }
+    }
+
+    static string Cors(string origin)
+    {
+        return "Access-Control-Allow-Origin: " + origin + "\r\nVary: Origin\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
+               "Access-Control-Allow-Headers: Content-Type\r\nAccess-Control-Allow-Private-Network: true\r\nAccess-Control-Max-Age: 600\r\n";
+    }
+
+    static void Reply(NetworkStream s, string status, string origin)
+    {
+        Write(s, "HTTP/1.1 " + status + "\r\nContent-Length: 0\r\nConnection: close\r\n" + (origin == null ? "" : Cors(origin)) + "\r\n");
+    }
+
+    static void Write(NetworkStream s, string text)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
+        s.Write(bytes, 0, bytes.Length);
+        s.Flush();
+    }
+
+    static int ClientCount() { lock (clients) return clients.Count; }
+
+    static void Broadcast(string message)
+    {
+        bool empty;
+        lock (clients)
+        {
+            for (int i = clients.Count - 1; i >= 0; i--)
+            {
+                try { Write(clients[i], message); }
+                catch { clients[i].Dispose(); clients.RemoveAt(i); }
+            }
+            empty = clients.Count == 0;
+        }
+        if (empty) SetLive(false);
+    }
+
+    // ---------- tray ----------
+    static void SetLive(bool live)
+    {
+        try
+        {
+            uiThread.BeginInvoke((MethodInvoker)delegate
+            {
+                tray.Icon = live ? liveIcon : idleIcon;
+                tray.Text = live ? "Amirus Dictator: listening (Ctrl+Alt+D to stop)" : IdleTip;
+            });
+        }
+        catch { }
+    }
+
+    static void OpenApp()
+    {
+        try { Process.Start(AppUrl); } catch { }
+    }
+
+    public static void Hotkey(int id)
+    {
+        if (id == 1 && ClientCount() == 0) { OpenApp(); return; }
+        Broadcast("data: " + (id == 1 ? "toggle" : "lang") + "\n\n");
+    }
+
+    static bool IsStartup()
+    {
+        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey)) return key != null && key.GetValue(RunName) != null;
+    }
+
+    static void SetStartup(bool on)
+    {
+        using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKey))
+        {
+            if (on) key.SetValue(RunName, "\"" + Application.ExecutablePath + "\"");
+            else key.DeleteValue(RunName, false);
+        }
+    }
+
+    static Icon MakeIcon(Color back)
+    {
+        using (var bmp = new Bitmap(32, 32))
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var fill = new SolidBrush(back)) g.FillEllipse(fill, 1, 1, 30, 30);
+            using (var body = new GraphicsPath())
+            {
+                body.AddArc(12f, 6f, 8f, 8f, 180f, 180f);
+                body.AddArc(12f, 11f, 8f, 8f, 0f, 180f);
+                body.CloseFigure();
+                g.FillPath(Brushes.White, body);
+            }
+            using (var pen = new Pen(Color.White, 2f))
+            {
+                g.DrawArc(pen, 9f, 8f, 14f, 14f, 0f, 180f);
+                g.DrawLine(pen, 16f, 22f, 16f, 26f);
+            }
+            return Icon.FromHandle(bmp.GetHicon());
+        }
+    }
+
+    // ---------- typing ----------
+    [StructLayout(LayoutKind.Sequential)]
+    struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Explicit)]
+    struct InputUnion { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct INPUT { public uint type; public InputUnion u; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern uint SendInput(uint count, INPUT[] inputs, int size);
+    [DllImport("user32.dll")]
+    static extern short GetAsyncKeyState(int key);
+
+    static INPUT Key(ushort vk, ushort scan, uint flags)
+    {
+        var input = new INPUT();
+        input.type = 1;
+        input.u.ki.wVk = vk;
+        input.u.ki.wScan = scan;
+        input.u.ki.dwFlags = flags;
+        return input;
+    }
+
+    static bool ModifierDown()
+    {
+        return GetAsyncKeyState(0x11) < 0 || GetAsyncKeyState(0x12) < 0 || GetAsyncKeyState(0x5B) < 0 || GetAsyncKeyState(0x5C) < 0;
+    }
+
+    static void Flush(List<INPUT> batch)
+    {
+        if (batch.Count == 0) return;
+        SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+        batch.Clear();
+        Thread.Sleep(6);
+    }
+
+    static void TypeText(string text)
+    {
+        lock (typeLock)
+        {
+            // If Ctrl/Alt/Win is still held (e.g. from the hotkey), typing would fire shortcuts instead of text.
+            for (int i = 0; i < 30 && ModifierDown(); i++) Thread.Sleep(50);
+            var batch = new List<INPUT>();
+            foreach (char ch in text)
+            {
+                if (ch == '\r') continue;
+                if (ch == '\n') { batch.Add(Key(0x0D, 0, 0)); batch.Add(Key(0x0D, 0, 2)); }
+                else { batch.Add(Key(0, ch, 4)); batch.Add(Key(0, ch, 4 | 2)); }
+                if (batch.Count >= 64) Flush(batch);
+            }
+            Flush(batch);
+        }
+    }
+}
+
+sealed class HotWindow : NativeWindow
+{
+    [DllImport("user32.dll")]
+    static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
+
+    public readonly bool Ok;
+
+    public HotWindow()
+    {
+        CreateHandle(new CreateParams());
+        const uint CtrlAltNoRepeat = 0x4003;
+        bool mic = RegisterHotKey(Handle, 1, CtrlAltNoRepeat, 0x44);   // Ctrl+Alt+D
+        bool lang = RegisterHotKey(Handle, 2, CtrlAltNoRepeat, 0x4C);  // Ctrl+Alt+L
+        Ok = mic && lang;
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0312) Program.Hotkey(m.WParam.ToInt32());
+        base.WndProc(ref m);
+    }
+}

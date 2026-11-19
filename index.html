@@ -156,6 +156,12 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
     <label class="row"><span><b>English accent</b></span>
       <select data-key="enLocale"><option value="en-US">US</option><option value="en-GB">UK</option><option value="en-IN">India</option></select></label>
 
+    <div id="winGroup" hidden>
+    <div class="group">Windows</div>
+    <label class="row"><span><b>Type into other apps</b><small id="helperStatus">Off</small></span><input class="sw" type="checkbox" data-key="typeOut"></label>
+    <small style="color:var(--muted);display:block;padding-top:8px">Needs the small helper app (19 KB): <a href="AmirusDictatorHelper.exe" download style="color:var(--accent);font-weight:600">Download helper</a>. Run it, click into any app, then press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>D</kbd> and speak. Chrome may ask once to allow this page to reach apps on this device.</small>
+    </div>
+
     <div class="group">Appearance</div>
     <label class="row"><span><b>Theme</b></span>
       <select data-key="theme"><option value="system">Match device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
@@ -181,6 +187,8 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
       <table>
         <tr><td>Start / stop mic</td><td><kbd>Ctrl</kbd> <kbd>Space</kbd></td></tr>
         <tr><td>Switch language</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>L</kbd></td></tr>
+        <tr><td>Anywhere in Windows (helper): mic</td><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>D</kbd></td></tr>
+        <tr><td>Anywhere in Windows (helper): language</td><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd></td></tr>
       </table>
     </details>
   </div>
@@ -195,7 +203,7 @@ const els = {text:$('text'), interim:$('interim'), status:$('status'), count:$('
 /* ---------- settings ---------- */
 const DEF = {lang:'bn', bnLocale:'bn-BD', enLocale:'en-US', autocorrect:true, capitalize:true, dari:true,
   commands:true, autoEnd:false, digits:'keep', keepListening:true, autoCopy:false, wake:true,
-  theme:'system', fontSize:20, replacements:''};
+  theme:'system', fontSize:20, replacements:'', typeOut:false};
 const store = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
   set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
@@ -223,6 +231,7 @@ els.settings.addEventListener('input', e => {
   const el = e.target, k = el.dataset.key; if (!k) return;
   S[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
   if (k === 'replacements') repCache = null;
+  if (k === 'typeOut') helperConnect();
   saveSettings(); applyLook(); syncSettingsUI();
   if ((k === 'bnLocale' || k === 'enLocale' || k === 'keepListening') && want) relaunch();
 });
@@ -301,6 +310,7 @@ function changed(){
   els.count.textContent = w + (w === 1 ? ' word' : ' words') + ' · ' + els.text.value.length + ' chars';
 }
 function insertFinal(raw){
+  typeOutside(raw);
   const ta = els.text, a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
   const before = ta.value.slice(0, a), after = ta.value.slice(b);
   const chunk = processPhrase(raw, before);
@@ -352,7 +362,8 @@ function setState(live){
   els.mic.setAttribute('aria-pressed', live);
   els.mic.setAttribute('aria-label', live ? 'Stop dictation' : 'Start dictation');
   els.status.classList.toggle('live', live);
-  els.status.textContent = live ? 'Listening · ' + (S.lang === 'bn' ? 'বাংলা' : 'English') : 'Ready';
+  els.status.textContent = live ? 'Listening · ' + (S.lang === 'bn' ? 'বাংলা' : 'English') + (helperUp ? ' · typing into other apps' : '') : 'Ready';
+  if (helperUp) helperPost('/state', live ? 'on' : 'off').catch(() => {});
   if (!live) els.interim.textContent = '';
   if (live && S.wake && !wakeLock) navigator.wakeLock?.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => wakeLock = null); }).catch(() => {});
   if (!live && wakeLock) wakeLock.release().catch(() => {});
@@ -395,7 +406,7 @@ function spawn(){
 }
 function start(){
   if (!SR) return notice('This browser has no speech recognition. Open this page in Google Chrome (Windows or Android) or Microsoft Edge.');
-  notice(''); want = true; quickEnds = 0; spawn();
+  notice(''); want = true; quickEnds = 0; extCtx = ''; spawn();
 }
 function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
 function relaunch(){ forceRestart = true; try { rec.stop(); } catch {} }
@@ -412,7 +423,40 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && want) setState(true); });
 
+/* ---------- Windows helper: type into other apps ---------- */
+const HELPER = 'http://127.0.0.1:48219', isWindows = /Windows/i.test(navigator.userAgent);
+let es = null, helperUp = false, helperTimer = 0, extCtx = '', sendChain = Promise.resolve();
+const helperPost = (path, body) => fetch(HELPER + path, {method:'POST', body, headers:{'Content-Type':'text/plain'}});
+function helperStatus(){
+  $('helperStatus').textContent = !S.typeOut ? 'Off' : helperUp ? 'Helper connected' : 'Helper not running. Start AmirusDictatorHelper.exe';
+  if (want) setState(true);
+}
+function helperConnect(){
+  clearTimeout(helperTimer);
+  if (es) { es.close(); es = null; }
+  helperUp = false;
+  if (!S.typeOut || !isWindows) return helperStatus();
+  es = new EventSource(HELPER + '/events');
+  es.onopen = () => { helperUp = true; helperStatus(); if (!want) helperPost('/state', 'off').catch(() => {}); };
+  es.onmessage = e => {
+    if (e.data === 'toggle') els.mic.click();
+    else if (e.data === 'lang') setLang(S.lang === 'bn' ? 'en' : 'bn');
+  };
+  es.onerror = () => { es.close(); es = null; helperUp = false; helperStatus(); helperTimer = setTimeout(helperConnect, 5000); };
+  helperStatus();
+}
+// While another app has focus, each finished phrase is typed there by the helper (and still logged here).
+function typeOutside(raw){
+  if (!helperUp || document.hasFocus()) return;
+  const out = processPhrase(raw, extCtx);
+  if (!out) return;
+  extCtx = (extCtx + out).slice(-200);
+  sendChain = sendChain.then(() => helperPost('/type', out)).catch(() => toast('Could not reach the Windows helper'));
+}
+
 /* ---------- boot ---------- */
+$('winGroup').hidden = !isWindows;
+helperConnect();
 applyLook(); syncSettingsUI();
 els.text.value = store.get('ad.text', '');
 els.text.setSelectionRange(els.text.value.length, els.text.value.length);
