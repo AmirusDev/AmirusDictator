@@ -5,90 +5,164 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Amirus Dictator</title>
 <meta name="description" content="Free Bengali + English voice typing.">
-<meta name="theme-color" content="#0f766e">
+<meta name="theme-color" content="#f2f5f4">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- display=optional: the font never swaps in after first paint, so text cannot jump. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Bangla:wght@400..700&display=optional">
 <style>
 :root{
-  --bg:#f5f3ee;--surface:#ffffff;--ink:#1d1c1a;--muted:#6d6b65;--line:#e2dfd6;
-  --soft:#ebe8df;--accent:#0f766e;--accent-ink:#ffffff;--rec:#d92d20;--shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06);
+  --bg:#f2f5f4;--surface:#ffffff;--soft:#e7ecea;--line:#dce3e0;
+  --ink:#14201d;--muted:#566561;--accent:#0f766e;--accent-ink:#ffffff;--rec:#c8321f;
+  --select:#bfe6e0;--warn-bg:#fdf1dc;--warn-ink:#6b4200;
+  --ease-out:cubic-bezier(.23,1,.32,1);--ease-in-out:cubic-bezier(.77,0,.175,1);--ease-drawer:cubic-bezier(.32,.72,0,1);
+  --ui:16px;--small:13px;
 }
 html[data-theme=dark]{
-  --bg:#111413;--surface:#1a1e1c;--ink:#eceae4;--muted:#9a9890;--line:#2b302d;
-  --soft:#242927;--accent:#2dd4bf;--accent-ink:#06211d;--rec:#f97066;--shadow:0 1px 2px rgba(0,0,0,.4);
+  --bg:#0e1413;--surface:#151d1b;--soft:#1f2927;--line:#27322f;
+  --ink:#e8efed;--muted:#93a29e;--accent:#2dd4bf;--accent-ink:#04211d;--rec:#ff7a6b;
+  --select:#17524b;--warn-bg:#33270f;--warn-ink:#ffd699;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0;background:var(--bg);color:var(--ink);
-  font-family:"Segoe UI","Nirmala UI","Noto Sans Bengali","Noto Sans",system-ui,sans-serif;
-  display:flex;flex-direction:column;height:100dvh;
+  font-family:"Anek Bangla","Nirmala UI","Noto Sans Bengali","Segoe UI",system-ui,sans-serif;
+  font-size:var(--ui);line-height:1.4;
+  display:flex;flex-direction:column;height:100dvh;overflow:hidden;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   -webkit-tap-highlight-color:transparent;
+  scrollbar-color:var(--line) transparent;
 }
-.wrap{width:100%;max-width:780px;margin:0 auto;padding:0 16px}
-header .wrap{display:flex;align-items:center;gap:12px;padding-top:12px;padding-bottom:10px}
-.brand{font-weight:650;letter-spacing:-.01em;font-size:18px;margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.seg{display:flex;background:var(--soft);border-radius:999px;padding:3px}
-.seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:15px;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer}
-.seg button[aria-checked=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.icon{border:0;background:none;color:var(--muted);width:40px;height:40px;border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:none}
-.icon:hover{background:var(--soft);color:var(--ink)}
-#notice{background:#fff4e5;color:#7a4100;border:1px solid #f5d6a8;border-radius:12px;padding:10px 14px;font-size:15px;margin-bottom:10px}
-html[data-theme=dark] #notice{background:#33260f;color:#ffd699;border-color:#5c4416}
-main{flex:1;min-height:0;display:flex}
-main .wrap{display:flex;flex-direction:column}
-.sheet{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
-#text{flex:1;min-height:0;width:100%;border:0;outline:0;resize:none;background:none;color:var(--ink);font:inherit;font-size:var(--fs,20px);line-height:1.65;padding:18px 20px}
-#text::placeholder{color:var(--muted);opacity:.75}
-#interim{min-height:0;padding:0 20px;color:var(--accent);font-size:calc(var(--fs,20px) * .9);line-height:1.5;font-style:italic}
-#interim:not(:empty){padding:8px 20px 14px;border-top:1px dashed var(--line)}
-.status{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--muted);padding:8px 4px 0}
-#status.live{color:var(--rec);font-weight:600}
-.dock{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 0 14px}
-.dock .side{display:flex;gap:6px;flex:1}
-.dock .side:last-child{justify-content:flex-end}
-.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:15px;font-weight:600;padding:10px 14px;border-radius:12px;cursor:pointer;min-height:44px}
-.btn:hover{background:var(--soft)}
-.btn:disabled{opacity:.45;cursor:default}
-.mic{position:relative;flex:none;width:72px;height:72px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(15,118,110,.35);transition:transform .12s,background .2s}
-.mic:active{transform:scale(.95)}
-.mic[aria-pressed=true]{background:var(--rec);color:#fff;box-shadow:0 6px 18px rgba(217,45,32,.4)}
-.mic[aria-pressed=true]::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--rec);opacity:.5;animation:pulse 1.4s ease-out infinite}
-@keyframes pulse{from{transform:scale(.92);opacity:.6}to{transform:scale(1.25);opacity:0}}
-@media (prefers-reduced-motion:reduce){.mic[aria-pressed=true]::after{animation:none}}
+::selection{background:var(--select);color:var(--ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-#toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap}
-#toast.show{opacity:1}
-dialog{border:0;padding:0;background:var(--surface);color:var(--ink);border-radius:20px;width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 32px);box-shadow:0 20px 60px rgba(0,0,0,.3)}
-dialog::backdrop{background:rgba(0,0,0,.45)}
-.dhead{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 8px;position:sticky;top:0;background:var(--surface);z-index:1}
-.dhead h2{margin:0;font-size:18px}
-.dbody{padding:0 20px 20px}
-.group{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 0 4px}
-.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--line)}
-.row b{font-weight:600;font-size:15px;display:block}
-.row small{color:var(--muted);font-size:13px;display:block;margin-top:2px}
-.row.sub{padding-left:14px}
-select,.rep{font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+button,select,textarea,input{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{width:100%;max-width:780px;margin:0 auto;padding:0 16px}
+
+/* ---------- header ---------- */
+header .wrap{display:flex;align-items:center;gap:12px;height:64px}
+.brand{font-weight:650;font-size:20px;letter-spacing:-.01em;margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg{position:relative;display:grid;grid-template-columns:1fr 1fr;background:var(--soft);border-radius:999px;padding:3px;flex:none}
+.seg::before{content:"";position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--surface);transition:transform .2s var(--ease-in-out)}
+.seg[data-lang=en]::before{transform:translateX(100%)}
+.seg.instant::before{transition:none}
+.seg button{position:relative;border:0;background:none;color:var(--muted);font-weight:600;height:34px;padding:0 16px;border-radius:999px;transition:color .15s ease}
+.seg button[aria-checked=true]{color:var(--ink)}
+.icon{border:0;background:none;color:var(--muted);width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;transition:transform .14s var(--ease-out),background-color .15s ease,color .15s ease}
+.icon:active{transform:scale(.94)}
+
+/* ---------- sheet ---------- */
+main{flex:1;min-height:0;display:flex}
+main .wrap{position:relative;display:flex;flex-direction:column}
+.sheet{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface);border-radius:20px;overflow:hidden}
+#text{flex:1;min-height:0;width:100%;border:0;outline:0;resize:none;background:none;caret-color:var(--accent);
+  font-size:var(--fs,20px);line-height:1.65;padding:20px 22px;scrollbar-gutter:stable;scrollbar-color:var(--line) transparent}
+#text::placeholder{color:var(--muted);opacity:1}
+/* The live strip always keeps the same height, so arriving words never move the page. */
+.live{flex:none;height:64px;padding:8px 22px;background:var(--soft)}
+.clip{height:48px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+#interim{color:var(--ink);line-height:24px}
+#interim:empty::before{content:attr(data-hint);color:var(--muted)}
+#notice{position:absolute;z-index:2;top:10px;left:26px;right:26px;display:flex;align-items:flex-start;gap:8px;background:var(--warn-bg);color:var(--warn-ink);border-radius:14px;padding:12px 8px 12px 16px;
+  transition:opacity .2s var(--ease-out),transform .2s var(--ease-out)}
+#notice[hidden]{display:none}
+@starting-style{#notice{opacity:0;transform:translateY(-6px)}}
+#notice span{flex:1;padding-top:2px}
+#notice .icon{width:32px;height:32px;color:inherit}
+
+/* ---------- dock ---------- */
+.status{display:flex;justify-content:space-between;gap:12px;height:36px;align-items:center;font-size:var(--small);color:var(--muted);padding:0 6px;white-space:nowrap}
+#status{overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;min-width:0}
+#status::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--line);transition:background-color .2s ease}
+#status.live{color:var(--ink)}
+#status.live::before{background:var(--rec)}
+#count{font-variant-numeric:tabular-nums;flex:none}
+.dock{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:4px 0 16px}
+.dock .side{display:flex;gap:8px}
+.dock .side:last-child{justify-content:flex-end}
+.btn{border:0;background:var(--soft);font-weight:600;height:44px;min-width:72px;padding:0 16px;border-radius:999px;transition:transform .14s var(--ease-out),background-color .15s ease}
+.btn:active{transform:scale(.97)}
+.btn:disabled{color:var(--muted);opacity:.55;cursor:default;transform:none}
+.mic{position:relative;flex:none;width:76px;height:76px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;
+  transition:transform .14s var(--ease-out),background-color .2s ease,color .2s ease}
+.mic:active{transform:scale(.95)}
+.mic[aria-pressed=true]{background:var(--rec);color:#fff}
+html[data-theme=dark] .mic[aria-pressed=true]{color:#2b0a05}
+.mic::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--rec);opacity:0;pointer-events:none}
+.mic[aria-pressed=true]::after{animation:ring 1.6s var(--ease-out) infinite}
+@keyframes ring{from{transform:scale(1);opacity:.55}to{transform:scale(1.38);opacity:0}}
+@media (hover:hover) and (pointer:fine){
+  .icon:hover{background:var(--soft);color:var(--ink)}
+  .btn:not(:disabled):hover{background:var(--line)}
+}
+
+#toast{position:fixed;left:50%;bottom:132px;z-index:5;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:var(--small);font-weight:600;white-space:nowrap;pointer-events:none;
+  opacity:0;transform:translate(-50%,8px);transition:opacity .18s var(--ease-out),transform .18s var(--ease-out)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- settings ---------- */
+dialog{border:0;padding:0;background:var(--surface);color:var(--ink);border-radius:22px;width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 32px);box-shadow:0 24px 64px -12px rgb(0 0 0/.35);
+  opacity:0;transform:translateY(14px) scale(.985);
+  transition:opacity .16s var(--ease-out),transform .16s var(--ease-out),overlay .16s allow-discrete,display .16s allow-discrete}
+dialog[open]{opacity:1;transform:none;transition-duration:.26s;transition-timing-function:var(--ease-out),var(--ease-drawer),linear,linear}
+@starting-style{dialog[open]{opacity:0;transform:translateY(14px) scale(.985)}}
+dialog::backdrop{background:rgb(0 0 0/0);transition:background-color .2s ease,overlay .2s allow-discrete,display .2s allow-discrete}
+dialog[open]::backdrop{background:rgb(0 0 0/.45)}
+@starting-style{dialog[open]::backdrop{background:rgb(0 0 0/0)}}
+.dhead{display:flex;align-items:center;justify-content:space-between;padding:18px 14px 6px 22px;position:sticky;top:0;background:var(--surface);z-index:1}
+.dhead h2{margin:0;font-size:26px;font-weight:650;letter-spacing:-.01em}
+.dbody{padding:0 22px 24px}
+.dbody h3{font-size:var(--small);font-weight:600;color:var(--muted);margin:22px 0 2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:56px;padding:8px 0;border-bottom:1px solid var(--line)}
+.row b{font-weight:600;display:block}
+.row small,.note{color:var(--muted);font-size:var(--small);display:block}
+.row.sub{padding-left:16px}
+.note{padding-top:10px}
+.note a{color:var(--accent);font-weight:600}
+select,.rep{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .rep{width:100%;min-height:96px;resize:vertical;margin-top:8px;line-height:1.5}
 input[type=range]{accent-color:var(--accent);width:140px}
-.sw{appearance:none;flex:none;width:46px;height:28px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .15s;margin:0}
-.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.sw{appearance:none;flex:none;width:46px;height:28px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;margin:0;transition:background-color .15s ease}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .16s var(--ease-out)}
 .sw:checked{background:var(--accent)}
 .sw:checked::after{transform:translateX(18px)}
+.sw:active::after{transform:scale(.92)}
+.sw:checked:active::after{transform:translateX(18px) scale(.92)}
 .sw:disabled{opacity:.4}
-details{margin-top:14px;font-size:15px}
-summary{cursor:pointer;font-weight:600;padding:6px 0}
-table{border-collapse:collapse;width:100%;margin-top:6px}
-td{padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
-td:last-child{text-align:right;font-weight:700;white-space:nowrap}
-kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+details{margin-top:14px}
+summary{cursor:pointer;font-weight:600;padding:8px 0}
+table{border-collapse:collapse;width:100%}
+td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+kbd{font:inherit;font-size:var(--small);background:var(--soft);border-radius:6px;padding:1px 7px}
+
+/* ---------- floating mic window (Windows, always on top) ---------- */
+body.float{flex-direction:row;align-items:center;gap:14px;padding:12px 14px;height:100vh}
+body.float .mic{width:64px;height:64px}
+body.float .col{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+body.float #fs{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.float #fi{color:var(--muted);font-size:var(--small);height:36px;line-height:18px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+body.float .btn{height:32px;min-width:0;align-self:flex-start;font-size:var(--small);padding:0 12px}
+body.mini>header,body.mini>main,body.mini>footer,body.mini>#toast{display:none}
+
 @media (max-width:480px){
-  .brand{font-size:16px}.seg button{padding:7px 12px}
-  .btn{padding:10px 11px;font-size:13px}
-  #text{padding:14px 16px}
+  header .wrap{gap:8px}.brand{font-size:var(--ui)}.seg button{padding:0 10px}
+  .dock,.dock .side{gap:6px}
+  .btn{min-width:0;padding:0 12px;font-size:var(--small)}
+  #text{padding:16px 18px}.live{padding:8px 18px}
+  #notice{left:22px;right:22px}
+  dialog{width:100vw;max-width:100vw;margin:auto 0 0;border-radius:22px 22px 0 0;max-height:88dvh;transform:translateY(40px)}
+  @starting-style{dialog[open]{opacity:0;transform:translateY(40px)}}
+}
+@media (prefers-reduced-motion:reduce){
+  .mic[aria-pressed=true]::after{animation:none;opacity:.5;transform:scale(1.14)}
+  .seg::before,dialog,dialog[open],#toast,#notice,.btn,.mic,.icon{transition-property:opacity,background-color,color}
+  dialog,#toast{transform:none}
+  #toast{transform:translate(-50%,0)}
 }
 </style>
 </head>
@@ -100,15 +174,19 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
     <button type="button" role="radio" data-lang="en">English</button>
   </div>
   <button class="icon" id="openSettings" aria-label="Settings" title="Settings">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
   </button>
 </div></header>
 
 <main><div class="wrap">
-  <div id="notice" hidden></div>
+  <div id="notice" role="alert" hidden><span id="noticeText"></span>
+    <button class="icon" id="noticeClose" aria-label="Dismiss message">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
   <div class="sheet">
     <textarea id="text" spellcheck="false" aria-label="Dictated text" placeholder="মাইক চাপুন এবং বলা শুরু করুন…&#10;Tap the mic and start speaking…"></textarea>
-    <div id="interim" aria-live="off"></div>
+    <div class="live"><div class="clip"><div id="interim" aria-live="off" data-hint="Words appear here while you speak, then move up into the text."></div></div></div>
   </div>
 </div></main>
 
@@ -138,7 +216,7 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
     </button>
   </div>
   <div class="dbody">
-    <div class="group">Text clean-up</div>
+    <h3>Text clean-up</h3>
     <label class="row"><span><b>Auto-correct</b><small>Fix spacing and punctuation as you speak</small></span><input class="sw" type="checkbox" data-key="autocorrect"></label>
     <label class="row sub"><span><b>Capitalize English</b><small>Sentence starts and the word “I”</small></span><input class="sw" type="checkbox" data-key="capitalize" data-needs="autocorrect"></label>
     <label class="row sub"><span><b>Use দাঁড়ি (।) in Bengali</b><small>Turn a sentence-ending “.” into “।”</small></span><input class="sw" type="checkbox" data-key="dari" data-needs="autocorrect"></label>
@@ -147,7 +225,7 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
     <label class="row"><span><b>Numbers</b><small>Which digits to write</small></span>
       <select data-key="digits"><option value="keep">As recognized</option><option value="bn">০১২ in Bengali mode</option><option value="en">Always 012</option></select></label>
 
-    <div class="group">Listening</div>
+    <h3>Listening</h3>
     <label class="row"><span><b>Keep listening</b><small>Stay on through pauses until you tap stop</small></span><input class="sw" type="checkbox" data-key="keepListening"></label>
     <label class="row"><span><b>Auto-copy</b><small>Copy the whole text after every phrase</small></span><input class="sw" type="checkbox" data-key="autoCopy"></label>
     <label class="row"><span><b>Keep screen on</b><small>While the mic is active</small></span><input class="sw" type="checkbox" data-key="wake"></label>
@@ -157,19 +235,23 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
       <select data-key="enLocale"><option value="en-US">US</option><option value="en-GB">UK</option><option value="en-IN">India</option></select></label>
 
     <div id="winGroup" hidden>
-    <div class="group">Windows</div>
-    <label class="row"><span><b>Type into other apps</b><small id="helperStatus">Off</small></span><input class="sw" type="checkbox" data-key="typeOut"></label>
-    <small style="color:var(--muted);display:block;padding-top:8px">Needs the small helper app (19 KB): <a href="AmirusDictatorHelper.exe" download style="color:var(--accent);font-weight:600">Download helper</a>. Run it, click into any app, then press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>D</kbd> and speak. Chrome may ask once to allow this page to reach apps on this device.</small>
+      <h3>Type into other Windows apps</h3>
+      <label class="row"><span><b>Type into other apps</b><small id="helperStatus">Off</small></span><input class="sw" type="checkbox" data-key="typeOut"></label>
+      <span class="note"><a href="AmirusDictatorHelper.exe" download>Download the helper</a> and run it once. After that you do not need this page: click into any app and press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>D</kbd>. A small mic window appears in the corner and types what you say; press it again to stop. The switch above is only for dictating from this page instead.</span>
+    </div>
+    <div id="androidGroup" hidden>
+      <h3>Type into other Android apps</h3>
+      <span class="note"><a href="AmirusDictator.apk" download>Download the Amirus Dictator keyboard</a> (29 KB). Install it, follow its three set-up steps, then pick it as your keyboard in any app and tap its mic.</span>
     </div>
 
-    <div class="group">Appearance</div>
+    <h3>Appearance</h3>
     <label class="row"><span><b>Theme</b></span>
       <select data-key="theme"><option value="system">Match device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-    <label class="row"><span><b>Text size</b></span><input type="range" min="15" max="32" step="1" data-key="fontSize"></label>
+    <label class="row"><span><b>Text size</b></span><input type="range" min="15" max="32" step="1" data-key="fontSize" aria-label="Text size"></label>
 
-    <div class="group">My corrections</div>
-    <small style="color:var(--muted)">One per line: <kbd>heard = wanted</kbd>. Fixes words the recognizer keeps getting wrong.</small>
-    <textarea class="rep" data-key="replacements" spellcheck="false" placeholder="আমিরুস = আমিরুছ&#10;whats app = WhatsApp"></textarea>
+    <h3>My corrections</h3>
+    <span class="note" style="padding-top:2px">One per line: <kbd>heard = wanted</kbd>. Fixes words the recognizer keeps getting wrong.</span>
+    <textarea class="rep" data-key="replacements" spellcheck="false" aria-label="My corrections" placeholder="আমিরুস = আমিরুছ&#10;whats app = WhatsApp"></textarea>
 
     <details><summary>Spoken punctuation list</summary>
       <table>
@@ -179,8 +261,8 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
         <tr><td><span lang="bn">বিস্ময় চিহ্ন</span> · exclamation mark</td><td>!</td></tr>
         <tr><td>full stop</td><td>.</td></tr>
         <tr><td><span lang="bn">কোলন · সেমিকোলন</span> · colon · semicolon</td><td>: ;</td></tr>
-        <tr><td><span lang="bn">নতুন লাইন</span> · new line</td><td>↵</td></tr>
-        <tr><td><span lang="bn">নতুন প্যারাগ্রাফ</span> · new paragraph</td><td>↵↵</td></tr>
+        <tr><td><span lang="bn">নতুন লাইন</span> · new line</td><td>line break</td></tr>
+        <tr><td><span lang="bn">নতুন প্যারাগ্রাফ</span> · new paragraph</td><td>blank line</td></tr>
       </table>
     </details>
     <details><summary>Keyboard shortcuts</summary>
@@ -198,7 +280,7 @@ kbd{font:inherit;font-size:12px;background:var(--soft);border:1px solid var(--li
 'use strict';
 const $ = id => document.getElementById(id);
 const els = {text:$('text'), interim:$('interim'), status:$('status'), count:$('count'), mic:$('mic'),
-  notice:$('notice'), toast:$('toast'), undo:$('undo'), settings:$('settings'), share:$('share')};
+  notice:$('notice'), toast:$('toast'), undo:$('undo'), settings:$('settings'), share:$('share'), seg:document.querySelector('.seg')};
 
 /* ---------- settings ---------- */
 const DEF = {lang:'bn', bnLocale:'bn-BD', enLocale:'en-US', autocorrect:true, capitalize:true, dari:true,
@@ -211,11 +293,21 @@ const store = {
 const S = Object.assign({}, DEF, store.get('ad.settings', {}));
 const saveSettings = () => store.set('ad.settings', S);
 
+/* state shared by the speech, floating-window and helper sections */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const isAndroid = /Android/i.test(navigator.userAgent), isWindows = /Windows/i.test(navigator.userAgent);
+let rec = null, want = false, forceRestart = false, startedAt = 0, quickEnds = 0, wakeLock = null;
+const MINI = new URLSearchParams(location.search).has('mini');   // opened by the Windows helper as its mic window
+let fdoc = null;   // document holding the compact mic UI: the floating window's, or this one in mini mode
+let pip = null, es = null, helperUp = false, helperTimer = 0, extCtx = '', sendChain = Promise.resolve();
+
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
 function applyLook(){
   const dark = S.theme === 'dark' || (S.theme === 'system' && darkMq.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.style.setProperty('--fs', S.fontSize + 'px');
+  document.querySelector('meta[name=theme-color]').content = dark ? '#0e1413' : '#f2f5f4';
+  if (pip) pip.document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 }
 darkMq.addEventListener('change', applyLook);
 
@@ -225,6 +317,7 @@ function syncSettingsUI(){
     if (el.dataset.needs) el.disabled = !S[el.dataset.needs];
   });
   document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-checked', b.dataset.lang === S.lang));
+  els.seg.dataset.lang = S.lang;
   els.text.lang = S.lang;
 }
 els.settings.addEventListener('input', e => {
@@ -281,6 +374,7 @@ function tidy(t, bn){
   return t.replace(/^[ \t]+|[ \t]+$/g, '');
 }
 const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
+// Mirrored in android/src/dev/amirus/dictator/TextFix.java: keep the two in step.
 function processPhrase(raw, before){
   const bn = S.lang === 'bn';
   let t = raw.normalize('NFC').trim();
@@ -311,6 +405,7 @@ function changed(){
 }
 function insertFinal(raw){
   typeOutside(raw);
+  if (MINI) return;   // the mic window only types into other apps; it keeps no text of its own
   const ta = els.text, a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
   const before = ta.value.slice(0, a), after = ta.value.slice(b);
   const chunk = processPhrase(raw, before);
@@ -327,14 +422,19 @@ els.text.addEventListener('input', changed);
 
 let toastTimer;
 function toast(msg){ els.toast.textContent = msg; els.toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1800); }
-function notice(msg){ els.notice.textContent = msg || ''; els.notice.hidden = !msg; }
+function notice(msg){
+  $('noticeText').textContent = msg || ''; els.notice.hidden = !msg;
+  if (MINI && msg) { fdoc.getElementById('fs').textContent = 'Needs attention'; fdoc.getElementById('fi').textContent = msg; }
+}
+$('noticeClose').onclick = () => notice('');
+function showInterim(text){ els.interim.textContent = text; if (fdoc) fdoc.getElementById('fi').textContent = text; }
 
 els.undo.onclick = () => {
   if (!undoStack.length) return;
   els.text.value = undoStack.pop(); els.undo.disabled = !undoStack.length;
   const n = els.text.value.length; els.text.setSelectionRange(n, n); changed();
 };
-$('clear').onclick = () => { if (!els.text.value) return; pushUndo(); els.text.value = ''; changed(); toast('Cleared · tap Undo to restore'); };
+$('clear').onclick = () => { if (!els.text.value) return; pushUndo(); els.text.value = ''; changed(); toast('Cleared. Undo brings it back.'); };
 $('copy').onclick = async () => {
   if (!els.text.value) return toast('Nothing to copy');
   try { await navigator.clipboard.writeText(els.text.value); }
@@ -353,24 +453,34 @@ els.share.onclick = () => {
 };
 
 /* ---------- speech recognition ---------- */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const isAndroid = /Android/i.test(navigator.userAgent);
-let rec = null, want = false, forceRestart = false, startedAt = 0, quickEnds = 0, wakeLock = null;
 const locale = () => S.lang === 'bn' ? S.bnLocale : S.enLocale;
+const langName = () => S.lang === 'bn' ? 'বাংলা' : 'English';
 
 function setState(live){
+  const label = live ? 'Stop dictation' : 'Start dictation';
   els.mic.setAttribute('aria-pressed', live);
-  els.mic.setAttribute('aria-label', live ? 'Stop dictation' : 'Start dictation');
+  els.mic.setAttribute('aria-label', label);
   els.status.classList.toggle('live', live);
-  els.status.textContent = live ? 'Listening · ' + (S.lang === 'bn' ? 'বাংলা' : 'English') + (helperUp ? ' · typing into other apps' : '') : 'Ready';
-  if (helperUp) helperPost('/state', live ? 'on' : 'off').catch(() => {});
-  if (!live) els.interim.textContent = '';
+  els.status.textContent = live ? 'Listening · ' + langName() + (helperUp ? ' · typing into other apps' : '') : 'Ready';
+  if (fdoc) {
+    const d = fdoc, m = d.getElementById('fm');
+    m.setAttribute('aria-pressed', live); m.setAttribute('aria-label', label);
+    d.getElementById('fs').textContent = live ? 'Listening · ' + langName() : 'Ready';
+    d.getElementById('fl').textContent = 'Switch to ' + (S.lang === 'bn' ? 'English' : 'বাংলা');
+  }
+  if (!live) showInterim('');
+  if (helperUp) helperPost(STATE, live ? 'on' : 'off').catch(() => {});
   if (live && S.wake && !wakeLock) navigator.wakeLock?.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => wakeLock = null); }).catch(() => {});
   if (!live && wakeLock) wakeLock.release().catch(() => {});
 }
-function fail(msg){ want = false; notice(msg); setState(false); }
+function fail(msg){
+  want = false; setState(false); notice(msg);
+  if (MINI && helperUp) helperPost(STATE, 'error').catch(() => {});   // keeps the mic window up long enough to read
+}
 function spawn(){
-  rec = new SR();
+  // Recognition started from the always-on-top mic window keeps running while this page is covered or in a background tab.
+  const Ctor = (pip && (pip.SpeechRecognition || pip.webkitSpeechRecognition)) || SR;
+  rec = new Ctor();
   rec.lang = locale();
   // Android Chrome repeats earlier words in continuous mode, so use single-shot + auto restart there.
   rec.continuous = S.keepListening && !isAndroid;
@@ -383,7 +493,7 @@ function spawn(){
       const r = e.results[i];
       if (r.isFinal) insertFinal(r[0].transcript); else live += r[0].transcript;
     }
-    els.interim.textContent = live;
+    showInterim(live);
   };
   rec.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') fail('Microphone is blocked. Allow microphone access for this site in your browser settings, then tap the mic again.');
@@ -393,11 +503,13 @@ function spawn(){
   };
   rec.onend = () => {
     if (me !== rec) return;
-    els.interim.textContent = '';
+    showInterim('');
     if (want && (S.keepListening || forceRestart)) {
       forceRestart = false;
       quickEnds = Date.now() - startedAt < 700 ? quickEnds + 1 : 0;
-      if (quickEnds > 5) return fail('The speech service keeps stopping. Check your internet connection and that no other app is using the microphone.');
+      if (quickEnds > 5) return fail(document.hidden && !pip
+        ? 'Chrome stops the mic when this page is hidden. Tap the mic here to open the small always-on-top mic window, then switch to your other app.'
+        : 'The speech service keeps stopping. Check your internet connection and that no other app is using the microphone.');
       setTimeout(() => { if (want) spawn(); }, 150);
     } else { want = false; setState(false); }
   };
@@ -410,23 +522,50 @@ function start(){
 }
 function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
 function relaunch(){ forceRestart = true; try { rec.stop(); } catch {} }
-function setLang(l){
+function setLang(l, instant){
   if (S.lang === l) return;
+  els.seg.classList.toggle('instant', !!instant);   // keyboard-triggered switches do not animate
   S.lang = l; saveSettings(); syncSettingsUI();
-  if (want) { relaunch(); setState(true); }
+  if (want) relaunch();
+  setState(want);
 }
-els.mic.onclick = () => want ? stop() : start();
+const toggleLang = instant => setLang(S.lang === 'bn' ? 'en' : 'bn', instant);
+async function toggleMic(fromClick){
+  if (want) return stop();
+  if (fromClick && S.typeOut && helperUp && !pip) await openFloat();
+  start();
+}
+els.mic.onclick = () => toggleMic(true);
 document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => setLang(b.dataset.lang));
 document.addEventListener('keydown', e => {
-  if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); els.mic.click(); }
-  else if (e.ctrlKey && e.shiftKey && e.code === 'KeyL') { e.preventDefault(); setLang(S.lang === 'bn' ? 'en' : 'bn'); }
+  if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); toggleMic(true); }
+  else if (e.ctrlKey && e.shiftKey && e.code === 'KeyL') { e.preventDefault(); toggleLang(true); }
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && want) setState(true); });
 
-/* ---------- Windows helper: type into other apps ---------- */
-const HELPER = 'http://127.0.0.1:48219', isWindows = /Windows/i.test(navigator.userAgent);
-let es = null, helperUp = false, helperTimer = 0, extCtx = '', sendChain = Promise.resolve();
+/* ---------- Windows: floating mic + helper that types into other apps ---------- */
+const HELPER = 'http://127.0.0.1:48219', STATE = MINI ? '/state?mini=1' : '/state';
+const FLOAT_HTML = () => '<button class="mic" id="fm" type="button" aria-pressed="false">' + els.mic.innerHTML + '</button>' +
+  '<div class="col"><div id="fs" role="status">Ready</div><div id="fi"></div><button class="btn" id="fl" type="button"></button></div>';
+function wireFloat(d){
+  fdoc = d;
+  d.getElementById('fm').onclick = () => toggleMic(false);
+  d.getElementById('fl').onclick = () => toggleLang();
+  setState(want);
+}
 const helperPost = (path, body) => fetch(HELPER + path, {method:'POST', body, headers:{'Content-Type':'text/plain'}});
+async function openFloat(){
+  if (!('documentPictureInPicture' in window)) return;
+  try { pip = await documentPictureInPicture.requestWindow({width: 300, height: 124}); } catch { pip = null; return; }
+  const d = pip.document;
+  d.documentElement.dataset.theme = document.documentElement.dataset.theme;
+  document.querySelectorAll('style, link[rel=stylesheet]').forEach(n => d.head.append(n.cloneNode(true)));
+  d.title = 'Amirus Dictator';
+  d.body.className = 'float';
+  d.body.innerHTML = FLOAT_HTML();
+  pip.addEventListener('pagehide', () => { pip = null; fdoc = null; if (want) stop(); });
+  wireFloat(d);
+}
 function helperStatus(){
   $('helperStatus').textContent = !S.typeOut ? 'Off' : helperUp ? 'Helper connected' : 'Helper not running. Start AmirusDictatorHelper.exe';
   if (want) setState(true);
@@ -435,19 +574,20 @@ function helperConnect(){
   clearTimeout(helperTimer);
   if (es) { es.close(); es = null; }
   helperUp = false;
-  if (!S.typeOut || !isWindows) return helperStatus();
-  es = new EventSource(HELPER + '/events');
-  es.onopen = () => { helperUp = true; helperStatus(); if (!want) helperPost('/state', 'off').catch(() => {}); };
+  if (!(S.typeOut || MINI) || !isWindows) return helperStatus();
+  es = new EventSource(HELPER + '/events' + (MINI ? '?mini=1' : ''));
+  es.onopen = () => { helperUp = true; helperStatus(); if (!want && !MINI) helperPost(STATE, 'off').catch(() => {}); };
   es.onmessage = e => {
-    if (e.data === 'toggle') els.mic.click();
-    else if (e.data === 'lang') setLang(S.lang === 'bn' ? 'en' : 'bn');
+    if (e.data === 'toggle') toggleMic(false);
+    else if (e.data === 'lang') toggleLang(true);
   };
   es.onerror = () => { es.close(); es = null; helperUp = false; helperStatus(); helperTimer = setTimeout(helperConnect, 5000); };
   helperStatus();
 }
 // While another app has focus, each finished phrase is typed there by the helper (and still logged here).
 function typeOutside(raw){
-  if (!helperUp || document.hasFocus()) return;
+  if (!helperUp) return;
+  if (!MINI && (document.hasFocus() || (pip && pip.document.hasFocus()))) return;
   const out = processPhrase(raw, extCtx);
   if (!out) return;
   extCtx = (extCtx + out).slice(-200);
@@ -455,9 +595,18 @@ function typeOutside(raw){
 }
 
 /* ---------- boot ---------- */
+if (MINI) {
+  document.title = 'Amirus Dictator Mic';
+  document.body.classList.add('float', 'mini');
+  const box = document.createElement('div');
+  box.style.display = 'contents';
+  box.innerHTML = FLOAT_HTML();
+  document.body.append(box);
+  wireFloat(document);
+}
 $('winGroup').hidden = !isWindows;
-helperConnect();
-applyLook(); syncSettingsUI();
+$('androidGroup').hidden = !isAndroid;
+applyLook(); syncSettingsUI(); helperConnect();
 els.text.value = store.get('ad.text', '');
 els.text.setSelectionRange(els.text.value.length, els.text.value.length);
 changed();

@@ -26,6 +26,12 @@ static class Program
     static readonly string[] Origins = { "https://amirusdev.github.io", "http://localhost:5173", "http://127.0.0.1:5173" };
 
     static readonly List<NetworkStream> clients = new List<NetworkStream>();
+    // "Mini" clients are the small always-on-top mic window this helper opens; hotkeys go only to them.
+    static readonly List<NetworkStream> minis = new List<NetworkStream>();
+    static volatile bool pendingToggle;
+    static volatile bool miniLive;
+    static DateTime hideAt = DateTime.MaxValue, closeAt = DateTime.MaxValue;
+    static IntPtr lastTarget = IntPtr.Zero;
     static readonly object typeLock = new object();
     static NotifyIcon tray;
     static Icon idleIcon, liveIcon;
@@ -86,12 +92,14 @@ static class Program
         accept.IsBackground = true;
         accept.Start();
         keepAlive = new System.Threading.Timer(delegate { Broadcast(": ping\n\n"); }, null, 20000, 20000);
+        var tick = new System.Threading.Timer(delegate { MiniTick(); }, null, 1000, 1000);
 
         Application.Run();
         tray.Visible = false;
         listener.Stop();
         GC.KeepAlive(mutex);
         GC.KeepAlive(hot);
+        GC.KeepAlive(tick);
     }
 
     // ---------- tiny HTTP server ----------
@@ -142,14 +150,34 @@ static class Program
             string text = Encoding.UTF8.GetString(body, 0, got);
 
             if (method == "OPTIONS") Reply(s, "204 No Content", origin);
-            else if (method == "GET" && path == "/events")
+            else if (method == "GET" && path.StartsWith("/events"))
             {
+                bool mini = path.Contains("mini=1");
                 Write(s, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n" + Cors(origin) + "\r\ndata: hello\n\n");
-                lock (clients) clients.Add(s);
+                lock (clients)
+                {
+                    clients.Add(s);
+                    if (mini) minis.Add(s);
+                }
                 keep = true;
+                if (mini)
+                {
+                    ThreadPool.QueueUserWorkItem(delegate { ArrangeMini(); });
+                    if (pendingToggle)
+                    {
+                        pendingToggle = false;
+                        try { Write(s, "data: toggle\n\n"); } catch { }
+                    }
+                }
             }
             else if (method == "POST" && path == "/type") { TypeText(text); Reply(s, "204 No Content", origin); }
-            else if (method == "POST" && path == "/state") { SetLive(text.StartsWith("on")); Reply(s, "204 No Content", origin); }
+            else if (method == "POST" && path.StartsWith("/state"))
+            {
+                bool live = text.StartsWith("on");
+                SetLive(live);
+                if (path.Contains("mini=1")) MiniState(live, text.StartsWith("error"));
+                Reply(s, "204 No Content", origin);
+            }
             else Reply(s, "404 Not Found", origin);
         }
         catch { }
@@ -184,7 +212,7 @@ static class Program
             for (int i = clients.Count - 1; i >= 0; i--)
             {
                 try { Write(clients[i], message); }
-                catch { clients[i].Dispose(); clients.RemoveAt(i); }
+                catch { minis.Remove(clients[i]); clients[i].Dispose(); clients.RemoveAt(i); }
             }
             empty = clients.Count == 0;
         }
@@ -212,8 +240,156 @@ static class Program
 
     public static void Hotkey(int id)
     {
-        if (id == 1 && ClientCount() == 0) { OpenApp(); return; }
-        Broadcast("data: " + (id == 1 ? "toggle" : "lang") + "\n\n");
+        string message = "data: " + (id == 1 ? "toggle" : "lang") + "\n\n";
+        bool sent = false;
+        lock (clients)
+        {
+            foreach (NetworkStream s in minis)
+            {
+                try { Write(s, message); sent = true; } catch { }
+            }
+        }
+        if (sent) { if (id == 1) ShowMini(); return; }
+        if (id != 1) return;
+        // No mic window yet: open one and start listening as soon as it connects.
+        lastTarget = GetForegroundWindow();
+        pendingToggle = true;
+        LaunchMini();
+    }
+
+    // ---------- the small always-on-top mic window ----------
+    const string MiniTitle = "Amirus Dictator Mic";
+    const int MiniW = 340, MiniH = 168;
+
+    delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder text, int max);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+
+    static IntPtr FindMini()
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows(delegate (IntPtr hwnd, IntPtr l)
+        {
+            var title = new StringBuilder(128);
+            GetWindowText(hwnd, title, 128);
+            if (title.ToString().IndexOf(MiniTitle, StringComparison.Ordinal) < 0) return true;
+            var cls = new StringBuilder(64);
+            GetClassName(hwnd, cls, 64);
+            if (!cls.ToString().StartsWith("Chrome_WidgetWin")) return true;
+            found = hwnd;
+            return false;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    static string BrowserPath()
+    {
+        foreach (string exe in new[] { "chrome.exe", "msedge.exe" })
+        {
+            foreach (RegistryKey root in new[] { Registry.CurrentUser, Registry.LocalMachine })
+            {
+                using (RegistryKey key = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\" + exe))
+                {
+                    string path = key == null ? null : key.GetValue(null) as string;
+                    if (path != null && File.Exists(path)) return path;
+                }
+            }
+        }
+        return null;
+    }
+
+    static void LaunchMini()
+    {
+        Rectangle area = Screen.PrimaryScreen.WorkingArea;
+        string url = AppUrl + "?mini=1";
+        try
+        {
+            string browser = BrowserPath();
+            if (browser == null) Process.Start(url);
+            else Process.Start(browser, "--app=" + url + " --window-size=" + MiniW + "," + MiniH +
+                " --window-position=" + (area.Right - MiniW - 16) + "," + (area.Bottom - MiniH - 16));
+        }
+        catch { pendingToggle = false; }
+    }
+
+    // Makes the mic window a small, always-on-top tool window that never takes keyboard focus,
+    // then hands focus back to the app the user was typing in.
+    static void ArrangeMini()
+    {
+        IntPtr hwnd = IntPtr.Zero;
+        for (int i = 0; i < 40 && hwnd == IntPtr.Zero; i++)
+        {
+            hwnd = FindMini();
+            if (hwnd == IntPtr.Zero) Thread.Sleep(150);
+        }
+        if (hwnd == IntPtr.Zero) return;
+        Rectangle area = Screen.PrimaryScreen.WorkingArea;
+        const int GWL_EXSTYLE = -20;
+        const long WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000, WS_EX_APPWINDOW = 0x40000;
+        long ex = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+        ShowWindow(hwnd, 0);
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr((ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & ~WS_EX_APPWINDOW));
+        SetWindowPos(hwnd, new IntPtr(-1), area.Right - MiniW - 16, area.Bottom - MiniH - 16, MiniW, MiniH, 0x0010 | 0x0040);
+        hideAt = DateTime.MaxValue;
+        closeAt = DateTime.UtcNow.AddMinutes(3);
+        IntPtr target = lastTarget;
+        if (target == IntPtr.Zero || !IsWindow(target) || GetForegroundWindow() == target) return;
+        // Windows only lets the foreground thread hand focus on, so borrow its input queue for the call.
+        uint pid, mine = GetCurrentThreadId(), theirs = GetWindowThreadProcessId(GetForegroundWindow(), out pid);
+        AttachThreadInput(mine, theirs, true);
+        SetForegroundWindow(target);
+        AttachThreadInput(mine, theirs, false);
+    }
+
+    static void ShowMini()
+    {
+        IntPtr hwnd = FindMini();
+        if (hwnd == IntPtr.Zero) return;
+        hideAt = DateTime.MaxValue;
+        ShowWindow(hwnd, 4);                                                       // SW_SHOWNOACTIVATE
+        SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);  // keep on top; no move, size or activate
+    }
+
+    static void MiniState(bool live, bool error)
+    {
+        miniLive = live;
+        if (live) { ShowMini(); closeAt = DateTime.MaxValue; return; }
+        // Leave time for the last phrase to arrive (or an error to be read) before hiding.
+        hideAt = DateTime.UtcNow.AddSeconds(error ? 15 : 2);
+        closeAt = DateTime.UtcNow.AddMinutes(3);
+    }
+
+    static void MiniTick()
+    {
+        if (miniLive) return;
+        DateTime now = DateTime.UtcNow;
+        if (now < hideAt && now < closeAt) return;
+        IntPtr hwnd = FindMini();
+        if (hwnd == IntPtr.Zero) { hideAt = closeAt = DateTime.MaxValue; return; }
+        if (now >= closeAt)
+        {
+            // Close an idle mic window before Chrome freezes it; the next hotkey opens a fresh one.
+            hideAt = closeAt = DateTime.MaxValue;
+            PostMessage(hwnd, 0x0010, IntPtr.Zero, IntPtr.Zero);
+        }
+        else
+        {
+            hideAt = DateTime.MaxValue;
+            if (IsWindowVisible(hwnd)) ShowWindow(hwnd, 0);
+        }
     }
 
     static bool IsStartup()

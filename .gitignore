@@ -1,2 +1,6 @@
 .claude/
 .impeccable/
+android/build/
+android/release.keystore
+android/keystore.pass
+android/res/mipmap-xxxhdpi/
