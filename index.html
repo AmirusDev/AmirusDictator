@@ -297,7 +297,7 @@ const saveSettings = () => store.set('ad.settings', S);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const isAndroid = /Android/i.test(navigator.userAgent), isWindows = /Windows/i.test(navigator.userAgent);
 let rec = null, want = false, forceRestart = false, startedAt = 0, quickEnds = 0, wakeLock = null;
-let pending = '', pendingSince = 0, speechSince = 0, kickedAt = 0;   // watchdog state, see the interval below
+let pending = '', pendingSince = 0, speechSince = 0, kickedAt = 0, netErrors = 0;   // watchdog state, see the interval below
 const MINI = new URLSearchParams(location.search).has('mini');   // opened by the Windows helper as its mic window
 let fdoc = null;   // document holding the compact mic UI: the floating window's, or this one in mini mode
 let pip = null, es = null, helperUp = false, helperTimer = 0, extCtx = '', sendChain = Promise.resolve();
@@ -495,7 +495,7 @@ function spawn(){
       if (r.isFinal) insertFinal(r[0].transcript); else live += r[0].transcript;
     }
     if (live !== pending) { pending = live; pendingSince = Date.now(); }
-    speechSince = 0;
+    speechSince = 0; netErrors = 0;
     showInterim(live);
   };
   rec.onspeechstart = () => { speechSince = Date.now(); };
@@ -503,7 +503,8 @@ function spawn(){
   rec.onerror = e => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') fail('Microphone is blocked. Allow microphone access for this site in your browser settings, then tap the mic again.');
     else if (e.error === 'audio-capture') fail('No microphone found. Plug one in or check your sound settings.');
-    else if (e.error === 'network') fail('Speech recognition needs an internet connection. Check your connection and try again.');
+    // The speech service drops the connection now and then; retry a few times before giving up.
+    else if (e.error === 'network') { if (++netErrors > 3) fail('Speech recognition needs an internet connection. Check your connection and try again.'); }
     else if (e.error === 'language-not-supported') fail('This browser does not support ' + locale() + '. Try Google Chrome, or change the accent in Settings.');
   };
   rec.onend = () => {
@@ -516,7 +517,7 @@ function spawn(){
       if (quickEnds > 5) return fail(document.hidden && !pip
         ? 'Chrome stops the mic when this page is hidden. Tap the mic here to open the small always-on-top mic window, then switch to your other app.'
         : 'The speech service keeps stopping. Check your internet connection and that no other app is using the microphone.');
-      setTimeout(() => { if (want) spawn(); }, 30);
+      setTimeout(() => { if (want) spawn(); }, netErrors ? 600 : 30);
     } else { want = false; setState(false); }
   };
   startedAt = Date.now();
@@ -524,7 +525,7 @@ function spawn(){
 }
 function start(){
   if (!SR) return notice('This browser has no speech recognition. Open this page in Google Chrome (Windows or Android) or Microsoft Edge.');
-  notice(''); want = true; quickEnds = 0; extCtx = ''; spawn();
+  notice(''); want = true; quickEnds = 0; netErrors = 0; extCtx = ''; spawn();
 }
 function stop(){ want = false; try { rec && rec.stop(); } catch {} setState(false); }
 // Chrome's recognizer sometimes goes quiet: words stay "pending" and never become final, or it hears speech and
@@ -539,7 +540,7 @@ setInterval(() => {
     try { rec.abort(); } catch {}
     if (lost) insertFinal(lost);
     spawn();
-  } else if ((pending && now - pendingSince > 2500) || (speechSince && !pending && now - speechSince > 6000)) {
+  } else if ((pending && now - pendingSince > 1500) || (speechSince && !pending && now - speechSince > 6000)) {
     kickedAt = now; speechSince = 0; forceRestart = true;
     try { rec.stop(); } catch {}                    // stop() makes Chrome finalize what it has, then onend restarts
   }
